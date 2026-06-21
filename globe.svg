@@ -1,0 +1,19 @@
+import type { Metadata } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "Mike — HVAC Second Opinion",
+  description: "Get a second opinion on your HVAC quote before you commit.",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}
