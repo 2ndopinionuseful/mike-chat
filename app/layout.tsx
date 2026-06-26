@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Mike — HVAC Second Opinion",
@@ -13,7 +12,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body style={{margin:0,padding:0,background:"#0f0f0f"}}>{children}</body>
     </html>
   );
 }
