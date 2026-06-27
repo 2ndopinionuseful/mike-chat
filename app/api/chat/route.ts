@@ -296,13 +296,63 @@ Using everything discussed in this conversation, produce a detailed second opini
 
 Write in Mike's voice: direct, specific, no filler. This is a professional written document but still sounds human. The person paid $29 for honesty, not hedging.`;
 
+function generateSessionId(): string {
+  return `sess_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+}
+
+function detectSignals(messages: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>): {
+  gumroadLinkSent: boolean;
+  reportRequested: boolean;
+  messageCount: number;
+  lastUserMessage: string;
+} {
+  let gumroadLinkSent = false;
+  let reportRequested = false;
+  let lastUserMessage = "";
+
+  for (const msg of messages) {
+    const text = typeof msg.content === "string"
+      ? msg.content
+      : Array.isArray(msg.content)
+        ? msg.content.map((c: { type: string; text?: string }) => c.type === "text" ? c.text || "" : "").join(" ")
+        : "";
+
+    if (msg.role === "assistant" && text.includes("gumroad.com")) {
+      gumroadLinkSent = true;
+    }
+    if (msg.role === "user") {
+      lastUserMessage = text;
+      if (text.toLowerCase().includes("report ready") || text.toLowerCase().includes("i purchased") || text.toLowerCase().includes("i paid")) {
+        reportRequested = true;
+      }
+    }
+  }
+
+  return { gumroadLinkSent, reportRequested, messageCount: messages.length, lastUserMessage };
+}
+
 export async function POST(req: NextRequest) {
+  const sessionId = req.headers.get("x-session-id") || generateSessionId();
+  const timestamp = new Date().toISOString();
+
   try {
     const { messages } = await req.json();
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: "Invalid messages" }, { status: 400 });
     }
+
+    const signals = detectSignals(messages);
+
+    console.log(JSON.stringify({
+      event: "conversation_turn",
+      sessionId,
+      timestamp,
+      messageCount: signals.messageCount,
+      gumroadLinkSent: signals.gumroadLinkSent,
+      reportRequested: signals.reportRequested,
+      lastUserMessage: signals.lastUserMessage.substring(0, 200),
+    }));
 
     const response = await client.messages.create({
       model: "claude-haiku-4-5",
@@ -316,9 +366,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unexpected response" }, { status: 500 });
     }
 
-    return NextResponse.json({ reply: reply.text });
+    const replyText = reply.text;
+    const gumroadInReply = replyText.includes("gumroad.com");
+    const reportGenerated = signals.reportRequested;
+
+    if (gumroadInReply || reportGenerated) {
+      console.log(JSON.stringify({
+        event: gumroadInReply ? "gumroad_link_shown" : "report_generated",
+        sessionId,
+        timestamp,
+        messageCount: signals.messageCount,
+      }));
+    }
+
+    return NextResponse.json({ reply: replyText, sessionId });
   } catch (error) {
-    console.error("API error:", error);
+    console.error(JSON.stringify({
+      event: "api_error",
+      sessionId,
+      timestamp,
+      error: String(error),
+    }));
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }
 }
