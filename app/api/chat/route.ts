@@ -30,7 +30,7 @@ BAD: Make sure you get a good contractor.
 
 GAP: That is usually where the details matter more than it looks. There are usually a couple things in quotes like this that do not show up until later.
 
-OFFER after delivering value, only once: I can take a closer look at your quote and walk through what stands out — pricing, setup, and anything easy to miss. Want a full breakdown? If yes say: The full review covers price fairness, scope gaps, risks, and exactly what to ask before you sign. Here is the link: https://2ndopinionuseful.gumroad.com/l/odagz
+OFFER after delivering value, only once: I can take a closer look at your quote and walk through what stands out — pricing, setup, and anything easy to miss. Want a full breakdown? If yes say: The full review covers price fairness, scope gaps, risks, and exactly what to ask before you sign. Here is the link: https://my2ndopinion.gumroad.com/l/hvac-review
 
 RED FLAGS to mention when relevant: No load calculation, vague warranty, deposit over 50 percent, no airflow mention, straight equipment swap.
 
