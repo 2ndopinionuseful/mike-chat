@@ -25,9 +25,24 @@ export default function Home() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+  useEffect(() => {
+    if (messages.length > 1) {
+      localStorage.setItem("mike_conversation", JSON.stringify(messages));
+    }
+  }, [messages]);
 useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("paid") === "true") {
+      const saved = localStorage.getItem("mike_conversation");
+      if (saved) {
+        try {
+          const restored = JSON.parse(saved);
+          setMessages(restored);
+          window.history.replaceState({}, "", "/");
+          localStorage.removeItem("mike_conversation");
+          const paidMessage: Message = { role: "user", content: "I just paid — please write up my report." };
+          const newMessages = [...restored, paidMessage];
+          setMessages(newMessages);
       window.history.replaceState({}, "", "/");
       const paidMessage: Message = { role: "user", content: "I just paid — please write up my report." };
       const newMessages = [...messages, paidMessage];
