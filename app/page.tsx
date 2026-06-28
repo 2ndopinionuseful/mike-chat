@@ -1,13 +1,30 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 
-type MessageContent = 
+type MessageContent =
   | { type: "text"; text: string }
   | { type: "image"; url: string; mediaType: string; data: string };
 
-type Message = { 
-  role: "user" | "assistant"; 
+type Message = {
+  role: "user" | "assistant";
   content: string | MessageContent[];
+  displayImage?: string;
+};
+
+export default function Home() {
+  const [messages, setMessages] = useState<Message[]>([
+    { role: "assistant", content: "Most people don't realize what's actually wrong with a quote until after they've signed. Tell me what you've got — type the details or send a photo and I'll give you my read." }
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [pendingImage, setPendingImage] = useState<{data: string; mediaType: string; url: string} | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
 useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("paid") === "true") {
@@ -38,23 +55,6 @@ useEffect(() => {
     }
   }, []);
   
-  displayImage?: string;
-};
-
-export default function Home() {
-  const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", content: "Most people don't realize what's actually wrong with a quote until after they've signed. Tell me what you've got — type the details or send a photo and I'll give you my read." }
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [pendingImage, setPendingImage] = useState<{data: string; mediaType: string; url: string} | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
 
   const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
