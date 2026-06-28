@@ -13,7 +13,7 @@ type Message = {
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", content: "Hey — before you sign anything, tell me what you've got. Happy to take a look and give you my honest take." }
+    { role: "assistant", content: "Hey â€” before you sign anything, tell me what you've got. Happy to take a look and give you my honest take." }
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,27 +25,22 @@ export default function Home() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
   useEffect(() => {
     if (messages.length > 1) {
       localStorage.setItem("mike_conversation", JSON.stringify(messages));
     }
   }, [messages]);
-useEffect(() => {
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("paid") === "true") {
       const saved = localStorage.getItem("mike_conversation");
-      if (saved) {
-        try {
-          const restored = JSON.parse(saved);
-          setMessages(restored);
-          window.history.replaceState({}, "", "/");
-          localStorage.removeItem("mike_conversation");
-          const paidMessage: Message = { role: "user", content: "I just paid — please write up my report." };
-          const newMessages = [...restored, paidMessage];
-          setMessages(newMessages);
+      const restored: Message[] = saved ? JSON.parse(saved) : messages;
       window.history.replaceState({}, "", "/");
-      const paidMessage: Message = { role: "user", content: "I just paid — please write up my report." };
-      const newMessages = [...messages, paidMessage];
+      localStorage.removeItem("mike_conversation");
+      const paidMessage: Message = { role: "user", content: "I just paid â€” please write up my report." };
+      const newMessages = [...restored, paidMessage];
       setMessages(newMessages);
       setLoading(true);
       const apiMessages = newMessages.map((m) => ({
@@ -59,17 +54,16 @@ useEffect(() => {
       })
         .then((res) => res.json())
         .then((data) => {
-          setMessages([...newMessages, { role: "assistant", content: data.reply || "Something went wrong — try again." }]);
+          setMessages([...newMessages, { role: "assistant", content: data.reply || "Something went wrong â€” try again." }]);
         })
         .catch(() => {
-          setMessages([...newMessages, { role: "assistant", content: "Something went wrong — try again." }]);
+          setMessages([...newMessages, { role: "assistant", content: "Something went wrong â€” try again." }]);
         })
         .finally(() => {
           setLoading(false);
         });
     }
   }, []);
-  
 
   const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -134,9 +128,9 @@ useEffect(() => {
         body: JSON.stringify({ messages: apiMessages }),
       });
       const data = await res.json();
-      setMessages([...newMessages, { role: "assistant", content: data.reply || "Something went wrong — try again." }]);
+      setMessages([...newMessages, { role: "assistant", content: data.reply || "Something went wrong â€” try again." }]);
     } catch {
-      setMessages([...newMessages, { role: "assistant", content: "Something went wrong — try again." }]);
+      setMessages([...newMessages, { role: "assistant", content: "Something went wrong â€” try again." }]);
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -207,7 +201,7 @@ useEffect(() => {
           <div style={{padding:"8px 14px",borderTop:"1px solid #1e1e1e",display:"flex",alignItems:"center",gap:"8px"}}>
             <img src={pendingImage.url} alt="preview" style={{height:"48px",borderRadius:"6px",border:"1px solid #333"}}/>
             <span style={{color:"#888",fontSize:"12px",flex:1}}>Quote photo ready to send</span>
-            <button onClick={()=>setPendingImage(null)} style={{background:"none",border:"none",color:"#666",cursor:"pointer",fontSize:"16px"}}>×</button>
+            <button onClick={()=>setPendingImage(null)} style={{background:"none",border:"none",color:"#666",cursor:"pointer",fontSize:"16px"}}>Ã—</button>
           </div>
         )}
 
@@ -234,10 +228,11 @@ useEffect(() => {
         </div>
 
         <div style={{textAlign:"center" as const,color:"#333",fontSize:"11px",padding:"8px",letterSpacing:".04em",borderTop:"1px solid #191919"}}>
-          HVAC only · No contractor ties · Your call
+          HVAC only Â· No contractor ties Â· Your call
         </div>
       </div>
       <style>{`@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-4px)}}`}</style>
     </div>
   );
 }
+
