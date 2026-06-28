@@ -8,12 +8,42 @@ type MessageContent =
 type Message = { 
   role: "user" | "assistant"; 
   content: string | MessageContent[];
+useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("paid") === "true") {
+      window.history.replaceState({}, "", "/");
+      const paidMessage: Message = { role: "user", content: "I just paid — please write up my report." };
+      const newMessages = [...messages, paidMessage];
+      setMessages(newMessages);
+      setLoading(true);
+      const apiMessages = newMessages.map((m) => ({
+        role: m.role,
+        content: typeof m.content === "string" ? m.content : m.content,
+      }));
+      fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: apiMessages }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          setMessages([...newMessages, { role: "assistant", content: data.reply || "Something went wrong — try again." }]);
+        })
+        .catch(() => {
+          setMessages([...newMessages, { role: "assistant", content: "Something went wrong — try again." }]);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    }
+  }, []);
+  
   displayImage?: string;
 };
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", content: "Hey — tell me what you've got and I'll take a quick look. You can type details or send a photo of your quote." }
+    { role: "assistant", content: "Most people don't realize what's actually wrong with a quote until after they've signed. Tell me what you've got — type the details or send a photo and I'll give you my read." }
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
