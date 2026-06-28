@@ -13,7 +13,7 @@ type Message = {
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", content: "Hey â€” before you sign anything, tell me what you've got. Happy to take a look and give you my honest take." }
+    { role: "assistant", content: "Hey - before you sign anything, tell me what you've got. Happy to take a look and give you my honest take." }
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -39,7 +39,7 @@ export default function Home() {
       const restored: Message[] = saved ? JSON.parse(saved) : messages;
       window.history.replaceState({}, "", "/");
       localStorage.removeItem("mike_conversation");
-      const paidMessage: Message = { role: "user", content: "I just paid â€” please write up my report." };
+      const paidMessage: Message = { role: "user", content: "I just paid - please write up my report." };
       const newMessages = [...restored, paidMessage];
       setMessages(newMessages);
       setLoading(true);
@@ -54,10 +54,10 @@ export default function Home() {
       })
         .then((res) => res.json())
         .then((data) => {
-          setMessages([...newMessages, { role: "assistant", content: data.reply || "Something went wrong â€” try again." }]);
+          setMessages([...newMessages, { role: "assistant", content: data.reply || "Something went wrong - try again." }]);
         })
         .catch(() => {
-          setMessages([...newMessages, { role: "assistant", content: "Something went wrong â€” try again." }]);
+          setMessages([...newMessages, { role: "assistant", content: "Something went wrong - try again." }]);
         })
         .finally(() => {
           setLoading(false);
@@ -103,7 +103,6 @@ export default function Home() {
     setPendingImage(null);
     setLoading(true);
 
-    // Build API messages
     const apiMessages = newMessages.map(m => {
       if (typeof m.content === "string") {
         return { role: m.role, content: m.content };
@@ -128,9 +127,9 @@ export default function Home() {
         body: JSON.stringify({ messages: apiMessages }),
       });
       const data = await res.json();
-      setMessages([...newMessages, { role: "assistant", content: data.reply || "Something went wrong â€” try again." }]);
+      setMessages([...newMessages, { role: "assistant", content: data.reply || "Something went wrong - try again." }]);
     } catch {
-      setMessages([...newMessages, { role: "assistant", content: "Something went wrong â€” try again." }]);
+      setMessages([...newMessages, { role: "assistant", content: "Something went wrong - try again." }]);
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -150,7 +149,7 @@ export default function Home() {
   return (
     <div style={{minHeight:"100vh",background:"#0f0f0f",display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",fontFamily:"Georgia,serif"}}>
       <div style={{width:"100%",maxWidth:"500px",background:"#161616",borderRadius:"16px",border:"1px solid #232323",display:"flex",flexDirection:"column",height:"calc(100vh - 32px)",maxHeight:"760px",overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,.7)"}}>
-        
+
         {/* Header */}
         <div style={{padding:"15px 18px",borderBottom:"1px solid #1f1f1f",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
@@ -178,61 +177,3 @@ export default function Home() {
                 {getDisplayText(m.content) && (
                   <div style={m.role==="user"?{background:"#c8a96e",color:"#111",padding:"10px 13px",borderRadius:"13px 13px 3px 13px",fontSize:"14px",lineHeight:"1.65",fontWeight:"500"}:{background:"#1d1d1d",border:"1px solid #262626",color:"#ccc",padding:"10px 13px",borderRadius:"13px 13px 13px 3px",fontSize:"14px",lineHeight:"1.65"}}>
                     {getDisplayText(m.content)}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          {loading && (
-            <div style={{display:"flex",alignItems:"flex-end",gap:"7px"}}>
-              <div style={{width:"25px",height:"25px",borderRadius:"50%",background:"#c8a96e",color:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:"700",fontSize:"11px",flexShrink:0}}>M</div>
-              <div style={{background:"#1d1d1d",border:"1px solid #262626",padding:"12px 14px",borderRadius:"13px 13px 13px 3px"}}>
-                <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
-                  {[0,1,2].map(i=><span key={i} style={{width:"5px",height:"5px",background:"#444",borderRadius:"50%",display:"inline-block",animation:`bounce 1.2s ${i*0.2}s infinite`}}/>)}
-                </div>
-              </div>
-            </div>
-          )}
-          <div ref={bottomRef}/>
-        </div>
-
-        {/* Pending image preview */}
-        {pendingImage && (
-          <div style={{padding:"8px 14px",borderTop:"1px solid #1e1e1e",display:"flex",alignItems:"center",gap:"8px"}}>
-            <img src={pendingImage.url} alt="preview" style={{height:"48px",borderRadius:"6px",border:"1px solid #333"}}/>
-            <span style={{color:"#888",fontSize:"12px",flex:1}}>Quote photo ready to send</span>
-            <button onClick={()=>setPendingImage(null)} style={{background:"none",border:"none",color:"#666",cursor:"pointer",fontSize:"16px"}}>Ã—</button>
-          </div>
-        )}
-
-        {/* Input */}
-        <div style={{padding:"10px 13px",borderTop:"1px solid #1e1e1e",display:"flex",gap:"8px",alignItems:"flex-end"}}>
-          <button onClick={()=>fileRef.current?.click()}
-            style={{width:"36px",height:"36px",borderRadius:"50%",background:"#1d1d1d",border:"1px solid #333",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"#666"}}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>
-            </svg>
-          </button>
-          <input ref={fileRef} type="file" accept="image/*" onChange={handleImage} style={{display:"none"}}/>
-          <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey}
-            placeholder={pendingImage ? "Add a note or just hit send..." : "Reply..."}
-            rows={1} disabled={loading}
-            style={{flex:1,background:"#1d1d1d",border:"1px solid #262626",borderRadius:"11px",color:"#ccc",padding:"10px 12px",fontSize:"14px",fontFamily:"Georgia,serif",resize:"none" as const,outline:"none",lineHeight:"1.5",maxHeight:"100px",overflowY:"auto" as const}}/>
-          <button onClick={send} disabled={(!input.trim()&&!pendingImage)||loading}
-            style={{width:"39px",height:"39px",borderRadius:"50%",background:"#c8a96e",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:(input.trim()||pendingImage)&&!loading?1:0.35}}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path d="M22 2L11 13" stroke="#111" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="#111" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-        </div>
-
-        <div style={{textAlign:"center" as const,color:"#333",fontSize:"11px",padding:"8px",letterSpacing:".04em",borderTop:"1px solid #191919"}}>
-          HVAC only Â· No contractor ties Â· Your call
-        </div>
-      </div>
-      <style>{`@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-4px)}}`}</style>
-    </div>
-  );
-}
-
