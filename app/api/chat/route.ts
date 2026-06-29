@@ -1,8 +1,14 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { Redis } from "@upstash/redis";
 import { NextRequest, NextResponse } from "next/server";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+const redis = new Redis({
+  url: process.env.STORAGE_KV_REST_API_URL || process.env.KV_REST_API_URL || "",
+  token: process.env.STORAGE_KV_REST_API_TOKEN || process.env.KV_REST_API_TOKEN || "",
 });
 
 const SYSTEM_PROMPT = [
@@ -84,7 +90,7 @@ const SYSTEM_PROMPT = [
   "- State any assumption you made and why. Example: You did not mention square footage, so I am assuming a typical 1800 to 2200 sq ft home based on the system size quoted",
   "- If a number or detail was missing, say so and state the conditional logic. Example: If your home is under 1400 sq ft, the sizing read changes - flag that in your revision if needed",
   "",
-  "End with: If any of these assumptions are wrong, use your revision within 30 days to send me the correction and I will update the breakdown.",
+  "End with: If any of these assumptions are wrong, use your revision code below within 30 days to send me the correction and I will update the breakdown.",
   "",
   "SECTION 1 - SITUATION SUMMARY",
   "Based on conversation: system type, quote amount, contractor, specific concerns raised.",
@@ -106,11 +112,17 @@ const SYSTEM_PROMPT = [
   "",
   "REPORT FOOTER (always include at the end of the report):",
   "",
-  "Your revision code: [CODE-PENDING]",
+  "Your revision code: [REVISION_CODE]",
   "",
-  "If any details above were wrong or you have new info, come back within 30 days, enter your code, and tell me what changed - I will update the breakdown at no extra charge.",
+  "If any details above were wrong or you have new info, come back within 30 days, paste your revision code, and tell me what changed - I will update the breakdown at no extra charge.",
   "",
   "Tone throughout: direct, specific, no fluff, honest. They paid $29 for honesty.",
+  "",
+  "REVISION FLOW",
+  "",
+  "If the user pastes a revision code (format: MK-XXXX where X is a letter or number), reply naturally: Got it - let me pull up your report and see what needs updating. Tell me what changed.",
+  "",
+  "Then update the relevant sections based on what the user tells you changed. Keep everything else the same. End with the same revision code and a note that this is the updated version.",
   "",
   "SCOPE",
   "",
@@ -180,6 +192,15 @@ function generateSessionId(): string {
   return "sess_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
 }
 
+function generateRevisionCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "MK-";
+  for (let i = 0; i < 4; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
 const HIGH_INTENT_SIGNALS = [
   "break this down",
   "break it down",
@@ -205,16 +226,23 @@ const HIGH_INTENT_SIGNALS = [
   "evaluate this",
 ];
 
+function detectRevisionCode(text: string): string | null {
+  const match = text.match(/\bMK-[A-Z0-9]{4}\b/i);
+  return match ? match[0].toUpperCase() : null;
+}
+
 function detectSignals(messages: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>): {
   gumroadLinkSent: boolean;
   reportRequested: boolean;
   highIntentDetected: boolean;
+  revisionCode: string | null;
   messageCount: number;
   lastUserMessage: string;
 } {
   let gumroadLinkSent = false;
   let reportRequested = false;
   let highIntentDetected = false;
+  let revisionCode: string | null = null;
   let lastUserMessage = "";
 
   for (const msg of messages) {
@@ -241,10 +269,13 @@ function detectSignals(messages: Array<{ role: string; content: string | Array<{
       if (!gumroadLinkSent && HIGH_INTENT_SIGNALS.some(signal => t.includes(signal))) {
         highIntentDetected = true;
       }
+
+      const code = detectRevisionCode(text);
+      if (code) revisionCode = code;
     }
   }
 
-  return { gumroadLinkSent, reportRequested, highIntentDetected, messageCount: messages.length, lastUserMessage };
+  return { gumroadLinkSent, reportRequested, highIntentDetected, revisionCode, messageCount: messages.length, lastUserMessage };
 }
 
 export async function POST(req: NextRequest) {
@@ -268,11 +299,25 @@ export async function POST(req: NextRequest) {
       gumroadLinkSent: signals.gumroadLinkSent,
       reportRequested: signals.reportRequested,
       highIntentDetected: signals.highIntentDetected,
+      revisionCode: signals.revisionCode,
       lastUserMessage: signals.lastUserMessage.substring(0, 200),
     }));
 
     let systemPrompt = SYSTEM_PROMPT;
-    if (signals.highIntentDetected && !signals.gumroadLinkSent) {
+
+    if (signals.revisionCode) {
+      try {
+        const stored = await redis.get(signals.revisionCode);
+        if (stored) {
+          const data = stored as { report: string; conversation: string[] };
+          systemPrompt = SYSTEM_PROMPT + "\n\nREVISION CONTEXT: The user has returned with revision code " + signals.revisionCode + ". Their original report was:\n\n" + data.report + "\n\nUpdate the relevant sections based on what they tell you changed. Keep the same revision code in the footer.";
+        } else {
+          systemPrompt = SYSTEM_PROMPT + "\n\nNOTE: User entered revision code " + signals.revisionCode + " but it was not found or has expired. Let them know politely and offer to help with their current situation.";
+        }
+      } catch (e) {
+        console.error("Redis get error:", e);
+      }
+    } else if (signals.highIntentDetected && !signals.gumroadLinkSent) {
       systemPrompt = SYSTEM_PROMPT + "\n\nSYSTEM NOTE: The user has shown LEVEL 2 DECISION INTENT. You MUST offer the breakdown immediately. Do NOT ask any questions. Follow the LEVEL 2 path exactly.";
     }
 
@@ -292,9 +337,38 @@ export async function POST(req: NextRequest) {
     const gumroadInReply = replyText.includes("gumroad.com");
     const reportGenerated = signals.reportRequested;
 
-    if (gumroadInReply || reportGenerated) {
+    if (reportGenerated) {
+      const revisionCode = generateRevisionCode();
+      const recordToStore = {
+        report: replyText,
+        sessionId,
+        timestamp,
+        conversation: messages.map((m: { role: string; content: unknown }) => m.role + ": " + JSON.stringify(m.content)).slice(-10),
+      };
+
+      try {
+        await redis.set(revisionCode, JSON.stringify(recordToStore), { ex: 60 * 60 * 24 * 30 });
+        const finalReply = replyText.replace("[REVISION_CODE]", revisionCode);
+
+        console.log(JSON.stringify({
+          event: "report_generated",
+          sessionId,
+          timestamp,
+          revisionCode,
+          messageCount: signals.messageCount,
+        }));
+
+        return NextResponse.json({ reply: finalReply, sessionId });
+      } catch (e) {
+        console.error("Redis set error:", e);
+        const finalReply = replyText.replace("[REVISION_CODE]", "MK-ERROR");
+        return NextResponse.json({ reply: finalReply, sessionId });
+      }
+    }
+
+    if (gumroadInReply) {
       console.log(JSON.stringify({
-        event: gumroadInReply ? "gumroad_link_shown" : "report_generated",
+        event: "gumroad_link_shown",
         sessionId,
         timestamp,
         messageCount: signals.messageCount,
@@ -313,5 +387,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }
 }
-
-
