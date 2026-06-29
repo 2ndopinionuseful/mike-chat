@@ -96,7 +96,6 @@ export default function Home() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [pendingImage, setPendingImage] = useState<{data: string; mediaType: string; url: string} | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -212,11 +211,23 @@ export default function Home() {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
-  const copyReport = (text: string, index: number) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedIndex(index);
-      setTimeout(() => setCopiedIndex(null), 2000);
-    });
+  const downloadReport = async (text: string) => {
+    try {
+      const res = await fetch("/api/report-docx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportText: text }),
+      });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "hvac-second-opinion.docx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("Download failed - try again.");
+    }
   };
 
   const isReport = (text: string) => {
@@ -272,23 +283,22 @@ export default function Home() {
                 )}
                 {m.role === "assistant" && isReport(getDisplayText(m.content)) && (
                   <button
-                    onClick={() => copyReport(getDisplayText(m.content), i)}
+                    onClick={() => downloadReport(getDisplayText(m.content))}
                     style={{
                       marginTop: "6px",
-                      background: copiedIndex === i ? "#2a3a2a" : "#1a1a1a",
-                      border: "1px solid " + (copiedIndex === i ? "#4caf7d" : "#333"),
-                      color: copiedIndex === i ? "#4caf7d" : "#888",
+                      background: "#1a1a1a",
+                      border: "1px solid #c8a96e",
+                      color: "#c8a96e",
                       fontSize: "12px",
-                      padding: "5px 12px",
+                      padding: "6px 14px",
                       borderRadius: "8px",
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
                       gap: "5px",
-                      transition: "all 0.2s",
                     }}
                   >
-                    {copiedIndex === i ? "Copied!" : "Copy report"}
+                    Download Report (.docx)
                   </button>
                 )}
               </div>
