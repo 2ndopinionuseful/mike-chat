@@ -146,13 +146,13 @@ export default function Home() {
             <div style={{width:"37px",height:"37px",borderRadius:"50%",background:"#c8a96e",color:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:"700",fontSize:"15px"}}>M</div>
             <div>
               <div style={{color:"#ede8dc",fontWeight:"600",fontSize:"15px"}}>Mike</div>
-              <div style={{color:"#555",fontSize:"12px",display:"flex",alignItems:"center",gap:"4px",marginTop:"2px"}}>
+              <div style={{color:"#aaa",fontSize:"12px",display:"flex",alignItems:"center",gap:"4px",marginTop:"2px"}}>
                 <span style={{width:"6px",height:"6px",borderRadius:"50%",background:"#4caf7d",display:"inline-block"}}/>
                 HVAC Advisor
               </div>
             </div>
           </div>
-          <div style={{background:"#1c1c1c",border:"1px solid #2d2d2d",color:"#666",fontSize:"11px",padding:"3px 9px",borderRadius:"20px",letterSpacing:".05em",textTransform:"uppercase" as const}}>Second Opinion</div>
+          <div style={{background:"#1c1c1c",border:"1px solid #2d2d2d",color:"#999",fontSize:"11px",padding:"3px 9px",borderRadius:"20px",letterSpacing:".05em",textTransform:"uppercase" as const}}>Second Opinion</div>
         </div>
 
         <div style={{flex:1,overflowY:"auto" as const,padding:"16px 14px",display:"flex",flexDirection:"column" as const,gap:"12px"}}>
@@ -213,7 +213,7 @@ export default function Home() {
           </button>
         </div>
 
-        <div style={{textAlign:"center" as const,color:"#333",fontSize:"11px",padding:"8px",letterSpacing:".04em",borderTop:"1px solid #191919"}}>
+        <div style={{textAlign:"center" as const,color:"#777",fontSize:"11px",padding:"8px",letterSpacing:".04em",borderTop:"1px solid #191919"}}>
           HVAC only - No contractor ties - Your call
         </div>
       </div>
