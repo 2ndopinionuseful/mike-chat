@@ -41,10 +41,15 @@ function renderMarkdown(text: string) {
     });
 
     if (line.trim().startsWith("- ") || line.trim().startsWith("* ")) {
+      const bulletText = line.trim().substring(2);
+      const bulletParts = bulletText.split(/(\*\*[^*]+\*\*)/g).map((p, pi) => {
+        const m = p.match(/^\*\*(.+)\*\*$/);
+        return m ? <strong key={pi}>{m[1]}</strong> : p;
+      });
       elements.push(
         <div key={key++} style={{ display: "flex", gap: "6px", marginBottom: "3px" }}>
           <span style={{ color: "#c8a96e", flexShrink: 0 }}>&#8226;</span>
-          <span>{rendered.map((r, ri) => <span key={ri}>{r}</span>)}</span>
+          <span>{bulletParts}</span>
         </div>
       );
       continue;
