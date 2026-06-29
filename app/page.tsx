@@ -96,6 +96,7 @@ export default function Home() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [pendingImage, setPendingImage] = useState<{data: string; mediaType: string; url: string} | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -211,6 +212,17 @@ export default function Home() {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
+  const copyReport = (text: string, index: number) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000);
+    });
+  };
+
+  const isReport = (text: string) => {
+    return text.includes("SECTION 1") || text.includes("SITUATION SUMMARY") || text.includes("revision code");
+  };
+
   const getDisplayText = (content: string | MessageContent[]) => {
     if (typeof content === "string") return content;
     const textPart = content.find((c: MessageContent) => c.type === "text");
@@ -257,6 +269,27 @@ export default function Home() {
                         )
                     }
                   </div>
+                )}
+                {m.role === "assistant" && isReport(getDisplayText(m.content)) && (
+                  <button
+                    onClick={() => copyReport(getDisplayText(m.content), i)}
+                    style={{
+                      marginTop: "6px",
+                      background: copiedIndex === i ? "#2a3a2a" : "#1a1a1a",
+                      border: "1px solid " + (copiedIndex === i ? "#4caf7d" : "#333"),
+                      color: copiedIndex === i ? "#4caf7d" : "#888",
+                      fontSize: "12px",
+                      padding: "5px 12px",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "5px",
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    {copiedIndex === i ? "Copied!" : "Copy report"}
+                  </button>
                 )}
               </div>
             </div>
