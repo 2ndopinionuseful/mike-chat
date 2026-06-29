@@ -93,4 +93,212 @@ const SYSTEM_PROMPT = [
   "",
   "PAID FLOW",
   "",
-  "If user signals payment (paid, done, I am back, I
+  "If user signals payment (paid, done, I am back, I purchased, just paid, I bought, report ready) — reply naturally: Got it — give me a minute, I will put that together.",
+  "",
+  "Then generate a full report using this structure:",
+  "",
+  "SECTION 0 — ASSUMPTIONS (always include this)",
+  "",
+  "Before any analysis, state what you are working with and what you assumed. Be transparent about gaps.",
+  "",
+  "Say something like: Before I get into it — here is what I am working from and where I filled in gaps:",
+  "- State what the user actually told you",
+  "- State any assumption you made and why. Example: You did not mention square footage, so I am assuming a typical 1800 to 2200 sq ft home based on the system size quoted",
+  "- If a number or detail was missing, say so and state the conditional logic. Example: If your home is under 1400 sq ft, the sizing read changes — flag that in your revision if needed",
+  "",
+  "End with: If any of these assumptions are wrong, use your revision within 30 days to send me the correction and I will update the breakdown.",
+  "",
+  "SECTION 1 — SITUATION SUMMARY",
+  "Based on conversation: system type, quote amount, contractor, specific concerns raised.",
+  "",
+  "SECTION 2 — PRICE READ",
+  "Fair, high, or concern — and why. Reference specific numbers. Give a clear verdict. Use conditional framing where key info was missing.",
+  "",
+  "SECTION 3 — WHAT IS MISSING",
+  "Scope gaps specific to their quote. Only flag what is relevant to what they shared.",
+  "",
+  "SECTION 4 — RED FLAGS",
+  "Specific to their conversation. If none, say so honestly.",
+  "",
+  "SECTION 5 — FIVE TAILORED QUESTIONS FOR THEIR CONTRACTOR",
+  "Based on their specific situation, not generic.",
+  "",
+  "SECTION 6 — CLEAR RECOMMENDATION",
+  "Proceed, negotiate, or walk away — and exactly why.",
+  "",
+  "REPORT FOOTER (always include at the end of the report):",
+  "",
+  "Your revision code: [CODE-PENDING]",
+  "",
+  "If any details above were wrong or you have new info, come back within 30 days, enter your code, and tell me what changed — I will update the breakdown at no extra charge.",
+  "",
+  "Tone throughout: direct, specific, no fluff, honest. They paid $29 for honesty.",
+  "",
+  "SCOPE",
+  "",
+  "HVAC only. If asked outside HVAC, say briefly: I am mostly focused on HVAC right now — but happy to take a quick look if it is related.",
+  "",
+  "FINAL GOAL",
+  "",
+  "User should feel: that makes sense, I did not think of that, there is more here than I realized, I want a deeper breakdown before deciding.",
+  "",
+  "CORE REMINDER",
+  "",
+  "Do not try to be complete. Be useful enough to trust, incomplete enough to continue.",
+].join("\n");
+
+function generateSessionId(): string {
+  return "sess_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
+}
+
+const HIGH_INTENT_SIGNALS = [
+  "full breakdown",
+  "full analysis",
+  "full report",
+  "analyze this",
+  "analyze my",
+  "look at my quote",
+  "look at the full",
+  "look at this",
+  "give me your take",
+  "your take",
+  "full take",
+  "full opinion",
+  "is this worth it",
+  "worth it",
+  "should i go with",
+  "should i sign",
+  "should i do",
+  "what should i do",
+  "what do you think",
+  "is this fair",
+  "is this legit",
+  "is this a good deal",
+  "good deal",
+  "bad deal",
+  "help me decide",
+  "what would you do",
+  "review my quote",
+  "review this quote",
+  "check my quote",
+  "check this quote",
+  "evaluate this",
+  "break this down",
+  "break it down",
+  "is this reasonable",
+  "too expensive",
+  "too much",
+  "overpaying",
+  "ripping me off",
+  "seems high",
+  "seems low",
+];
+
+function detectSignals(messages: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>): {
+  gumroadLinkSent: boolean;
+  reportRequested: boolean;
+  highIntentDetected: boolean;
+  messageCount: number;
+  lastUserMessage: string;
+} {
+  let gumroadLinkSent = false;
+  let reportRequested = false;
+  let highIntentDetected = false;
+  let lastUserMessage = "";
+
+  for (const msg of messages) {
+    const text = typeof msg.content === "string"
+      ? msg.content
+      : Array.isArray(msg.content)
+        ? msg.content.map((c: { type: string; text?: string }) => c.type === "text" ? c.text || "" : "").join(" ")
+        : "";
+
+    if (msg.role === "assistant" && text.includes("gumroad.com")) {
+      gumroadLinkSent = true;
+    }
+
+    if (msg.role === "user") {
+      lastUserMessage = text;
+      const t = text.toLowerCase();
+
+      if (t.includes("report ready") || t.includes("i purchased") || t.includes("i paid") ||
+          t.includes("just paid") || t.includes("i bought") || t.includes("i'm back") ||
+          t === "done" || t === "paid" || t === "got it") {
+        reportRequested = true;
+      }
+
+      if (!gumroadLinkSent && HIGH_INTENT_SIGNALS.some(signal => t.includes(signal))) {
+        highIntentDetected = true;
+      }
+    }
+  }
+
+  return { gumroadLinkSent, reportRequested, highIntentDetected, messageCount: messages.length, lastUserMessage };
+}
+
+export async function POST(req: NextRequest) {
+  const sessionId = req.headers.get("x-session-id") || generateSessionId();
+  const timestamp = new Date().toISOString();
+
+  try {
+    const { messages } = await req.json();
+
+    if (!messages || !Array.isArray(messages)) {
+      return NextResponse.json({ error: "Invalid messages" }, { status: 400 });
+    }
+
+    const signals = detectSignals(messages);
+
+    console.log(JSON.stringify({
+      event: "conversation_turn",
+      sessionId,
+      timestamp,
+      messageCount: signals.messageCount,
+      gumroadLinkSent: signals.gumroadLinkSent,
+      reportRequested: signals.reportRequested,
+      highIntentDetected: signals.highIntentDetected,
+      lastUserMessage: signals.lastUserMessage.substring(0, 200),
+    }));
+
+    let systemPrompt = SYSTEM_PROMPT;
+    if (signals.highIntentDetected && !signals.gumroadLinkSent) {
+      systemPrompt = SYSTEM_PROMPT + "\n\nSYSTEM NOTE: The user has shown clear intent for a full breakdown. Offer immediately — do not ask more questions first. Follow the OFFER TIMING INTENT DETECTED path.";
+    }
+
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 1500,
+      system: systemPrompt,
+      messages,
+    });
+
+    const reply = response.content[0];
+    if (reply.type !== "text") {
+      return NextResponse.json({ error: "Unexpected response" }, { status: 500 });
+    }
+
+    const replyText = reply.text;
+    const gumroadInReply = replyText.includes("gumroad.com");
+    const reportGenerated = signals.reportRequested;
+
+    if (gumroadInReply || reportGenerated) {
+      console.log(JSON.stringify({
+        event: gumroadInReply ? "gumroad_link_shown" : "report_generated",
+        sessionId,
+        timestamp,
+        messageCount: signals.messageCount,
+        highIntentDetected: signals.highIntentDetected,
+      }));
+    }
+
+    return NextResponse.json({ reply: replyText, sessionId });
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "api_error",
+      sessionId,
+      timestamp,
+      error: String(error),
+    }));
+    return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
+  }
+}
