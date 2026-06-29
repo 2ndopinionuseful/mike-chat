@@ -13,7 +13,7 @@ type Message = {
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", content: "Hey - what did they quote you for? Happy to take a look and give you my honest take." }
+    { role: "assistant", content: "Hey — what did they quote you for?" }
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
