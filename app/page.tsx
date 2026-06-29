@@ -165,7 +165,11 @@ export default function Home() {
                 )}
                 {getDisplayText(m.content) && (
                   <div style={m.role==="user"?{background:"#c8a96e",color:"#111",padding:"10px 13px",borderRadius:"13px 13px 3px 13px",fontSize:"14px",lineHeight:"1.65",fontWeight:"500"}:{background:"#1d1d1d",border:"1px solid #262626",color:"#ccc",padding:"10px 13px",borderRadius:"13px 13px 13px 3px",fontSize:"14px",lineHeight:"1.65"}}>
-                    {getDisplayText(m.content)}
+                    {getDisplayText(m.content).split(/(https?:\/\/[^\s]+)/g).map((part, i) =>
+  part.match(/^https?:\/\//) ? (
+    <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{color:"#c8a96e",textDecoration:"underline"}}>{part}</a>
+  ) : part
+)}
                   </div>
                 )}
               </div>
