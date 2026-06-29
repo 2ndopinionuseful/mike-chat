@@ -11,6 +11,80 @@ type Message = {
   displayImage?: string;
 };
 
+function renderMarkdown(text: string) {
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+  let key = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (line.trim() === "" || line.trim() === "---") {
+      elements.push(<div key={key++} style={{ height: "8px" }} />);
+      continue;
+    }
+
+    const boldOnly = line.match(/^\*\*(.+)\*\*$/);
+    if (boldOnly) {
+      elements.push(
+        <div key={key++} style={{ fontWeight: "700", color: "#e8d5a3", marginTop: "10px", marginBottom: "2px", fontSize: "13px", letterSpacing: "0.03em" }}>
+          {boldOnly[1]}
+        </div>
+      );
+      continue;
+    }
+
+    const parts = line.split(/(\*\*[^*]+\*\*)/g);
+    const rendered = parts.map((part, pi) => {
+      const m = part.match(/^\*\*(.+)\*\*$/);
+      return m ? <strong key={pi}>{m[1]}</strong> : part;
+    });
+
+    if (line.trim().startsWith("- ") || line.trim().startsWith("* ")) {
+      elements.push(
+        <div key={key++} style={{ display: "flex", gap: "6px", marginBottom: "3px" }}>
+          <span style={{ color: "#c8a96e", flexShrink: 0 }}>&#8226;</span>
+          <span>{rendered.map((r, ri) => <span key={ri}>{r}</span>)}</span>
+        </div>
+      );
+      continue;
+    }
+
+    const numbered = line.match(/^(\d+)\.\s+(.+)/);
+    if (numbered) {
+      elements.push(
+        <div key={key++} style={{ display: "flex", gap: "6px", marginBottom: "3px" }}>
+          <span style={{ color: "#c8a96e", flexShrink: 0, minWidth: "16px" }}>{numbered[1]}.</span>
+          <span>{numbered[2].split(/(\*\*[^*]+\*\*)/g).map((p, pi) => {
+            const m2 = p.match(/^\*\*(.+)\*\*$/);
+            return m2 ? <strong key={pi}>{m2[1]}</strong> : p;
+          })}</span>
+        </div>
+      );
+      continue;
+    }
+
+    const withLinks = line.split(/(https?:\/\/[^\s]+)/g).map((part, pi) =>
+      part.match(/^https?:\/\//) ? (
+        <a key={pi} href={part} target="_blank" rel="noopener noreferrer" style={{ color: "#c8a96e", textDecoration: "underline" }}>{part}</a>
+      ) : (
+        <span key={pi}>{part.split(/(\*\*[^*]+\*\*)/g).map((p, pj) => {
+          const m3 = p.match(/^\*\*(.+)\*\*$/);
+          return m3 ? <strong key={pj}>{m3[1]}</strong> : p;
+        })}</span>
+      )
+    );
+
+    elements.push(
+      <div key={key++} style={{ marginBottom: "3px", lineHeight: "1.65" }}>
+        {withLinks}
+      </div>
+    );
+  }
+
+  return <div style={{ fontSize: "14px", color: "#ccc" }}>{elements}</div>;
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([
     { role: "assistant", content: "Hey - what's going on with your HVAC? Are you dealing with a quote or just trying to figure something out?" }
@@ -137,6 +211,7 @@ export default function Home() {
     const textPart = content.find((c: MessageContent) => c.type === "text");
     return textPart && textPart.type === "text" ? textPart.text : "";
   };
+
   return (
     <div style={{minHeight:"100vh",background:"#0f0f0f",display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",fontFamily:"Georgia,serif"}}>
       <div style={{width:"100%",maxWidth:"500px",background:"#161616",borderRadius:"16px",border:"1px solid #232323",display:"flex",flexDirection:"column",height:"calc(100vh - 32px)",maxHeight:"760px",overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,.7)"}}>
@@ -158,18 +233,24 @@ export default function Home() {
         <div style={{flex:1,overflowY:"auto" as const,padding:"16px 14px",display:"flex",flexDirection:"column" as const,gap:"12px"}}>
           {messages.map((m, i) => (
             <div key={i} style={{display:"flex",alignItems:"flex-end",gap:"7px",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
-              {m.role==="assistant" && <div style={{width:"25px",height:"25px",borderRadius:"50%",background:"#c8a96e",color:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:"700",fontSize:"11px",flexShrink:0}}>M</div>}
-              <div style={{maxWidth:"80%",display:"flex",flexDirection:"column" as const,gap:"6px",alignItems:m.role==="user"?"flex-end":"flex-start"}}>
+              {m.role==="assistant" && <div style={{width:"25px",height:"25px",borderRadius:"50%",background:"#c8a96e",color:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:"700",fontSize:"11px",flexShrink:0,alignSelf:"flex-start",marginTop:"4px"}}>M</div>}
+              <div style={{maxWidth:"85%",display:"flex",flexDirection:"column" as const,gap:"6px",alignItems:m.role==="user"?"flex-end":"flex-start"}}>
                 {m.displayImage && (
                   <img src={m.displayImage} alt="quote" style={{maxWidth:"100%",borderRadius:"10px",border:"1px solid #333"}}/>
                 )}
                 {getDisplayText(m.content) && (
-                  <div style={m.role==="user"?{background:"#c8a96e",color:"#111",padding:"10px 13px",borderRadius:"13px 13px 3px 13px",fontSize:"14px",lineHeight:"1.65",fontWeight:"500"}:{background:"#1d1d1d",border:"1px solid #262626",color:"#ccc",padding:"10px 13px",borderRadius:"13px 13px 13px 3px",fontSize:"14px",lineHeight:"1.65"}}>
-                    {getDisplayText(m.content).split(/(https?:\/\/[^\s]+)/g).map((part, i) =>
-  part.match(/^https?:\/\//) ? (
-    <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{color:"#c8a96e",textDecoration:"underline"}}>{part}</a>
-  ) : part
-)}
+                  <div style={m.role==="user"
+                    ? {background:"#c8a96e",color:"#111",padding:"10px 13px",borderRadius:"13px 13px 3px 13px",fontSize:"14px",lineHeight:"1.65",fontWeight:"500"}
+                    : {background:"#1d1d1d",border:"1px solid #262626",color:"#ccc",padding:"12px 14px",borderRadius:"13px 13px 13px 3px",fontSize:"14px",lineHeight:"1.65"}
+                  }>
+                    {m.role === "assistant"
+                      ? renderMarkdown(getDisplayText(m.content))
+                      : getDisplayText(m.content).split(/(https?:\/\/[^\s]+)/g).map((part, i) =>
+                          part.match(/^https?:\/\//) ? (
+                            <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{color:"#c8a96e",textDecoration:"underline"}}>{part}</a>
+                          ) : part
+                        )
+                    }
                   </div>
                 )}
               </div>
