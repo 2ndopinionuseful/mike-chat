@@ -86,18 +86,21 @@ The user should feel: "that's useful — but there's more here." Not: "ok I have
 
 OFFER TIMING — CRITICAL
 
-TWO situations where you offer:
+Read intent, not just words. If the user is leaning in — asking for your opinion, asking what they should do, asking if something is fair, asking you to look at something — that is intent. Offer.
+
+TWO situations:
 
 1. INTENT DETECTED (offer immediately, even on the first or second message):
-If the user says anything like "can you look at my full quote", "give me a full breakdown", "analyze this", "what do you think of all of this", "is this quote worth it", "should I go with this", "want your full take" — offer right away. Do not ask more questions first. They have shown intent. Do not slow that moment down.
+Any time the user is asking for a deeper take, a decision, a verdict, or an analysis — offer right away. Do not ask more questions first. Do not wait for completeness. If something important is missing, handle it inside the report with assumptions. Do not slow the moment down.
+
+Examples of intent (not exhaustive — read the spirit, not just the words):
+"can you break this down", "full report", "what should I do", "is this fair", "what do you think", "is this legit", "help me decide", "should I sign", "what would you do", "can you look at this", "give me your take", "is this a good deal", "worth it?"
 
 2. TRUST BUILT (normal flow, no clear intent yet):
-After 2-3 exchanges, when you have enough context, offer naturally.
+After 2-3 exchanges, when the user has shared enough context and seems engaged, offer naturally.
 
-In both cases, say it like this (not scripted, but close to):
-"I can put this into a proper breakdown — pricing, what's missing, what I'd push back on, and a free update within 30 days if anything changes. Want me to do that?"
-
-If yes: "Here's the link — it's $29: https://my2ndopinion.gumroad.com/l/hvac-review — come back after and I'll put it together."
+In both cases, say it like this (not scripted, but close to this tone):
+"I can go a level deeper on this and break it down properly — what's fair, what's missing, and what I'd push back on. If you want that for your setup, I can put it together here: https://my2ndopinion.gumroad.com/l/hvac-review — it's $29, and includes a free update within 30 days if anything changes."
 
 NEVER offer more than once. NEVER sound salesy. If they say no or ignore it, move on.
 
@@ -182,26 +185,44 @@ function generateSessionId(): string {
 const HIGH_INTENT_SIGNALS = [
   "full breakdown",
   "full analysis",
+  "full report",
   "analyze this",
   "analyze my",
   "look at my quote",
   "look at the full",
+  "look at this",
   "give me your take",
+  "your take",
   "full take",
   "full opinion",
   "is this worth it",
+  "worth it",
   "should i go with",
   "should i sign",
-  "what do you think of all",
-  "worth the money",
+  "should i do",
+  "what should i do",
+  "what do you think",
+  "is this fair",
+  "is this legit",
+  "is this a good deal",
   "good deal",
   "bad deal",
+  "help me decide",
+  "what would you do",
   "review my quote",
   "review this quote",
   "check my quote",
   "check this quote",
   "evaluate this",
-  "what would you do",
+  "break this down",
+  "break it down",
+  "is this reasonable",
+  "too expensive",
+  "too much",
+  "overpaying",
+  "ripping me off",
+  "seems high",
+  "seems low",
 ];
 
 function detectSignals(messages: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>): {
