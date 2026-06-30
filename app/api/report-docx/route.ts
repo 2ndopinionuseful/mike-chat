@@ -65,6 +65,8 @@ function buildDocChildren(text: string) {
   children.push(new Paragraph({ children: [new TextRun("")], spacing: { after: 400 } }));
 
   for (const section of sections) {
+    const isSection5 = section.heading.includes("SECTION 5") || section.heading.includes("FIVE");
+
     children.push(
       new Paragraph({
         heading: HeadingLevel.HEADING_2,
@@ -80,7 +82,7 @@ function buildDocChildren(text: string) {
       if (clean.startsWith("- ") || clean.startsWith("* ")) {
         children.push(
           new Paragraph({
-            numbering: { reference: "bullets", level: 0 },
+            numbering: { reference: isSection5 ? "numbers" : "bullets", level: 0 },
             children: [new TextRun({ text: clean.substring(2), size: 22 })],
             spacing: { after: 80 },
           })
