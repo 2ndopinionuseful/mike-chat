@@ -107,12 +107,20 @@ function buildDocChildren(text: string) {
           })
         );
       } else if (clean.startsWith("If any details above")) {
-        children.push(
-          new Paragraph({
-            children: [new TextRun({ text: clean, size: 20, italics: true, color: "666666" })],
-            spacing: { after: 120 },
-          })
-        );
+  children.push(
+    new Paragraph({
+      children: [new TextRun({ text: clean, size: 20, italics: true, color: "666666" })],
+      spacing: { after: 120 },
+    })
+  );
+  children.push(
+    new Paragraph({
+      children: [new TextRun({ text: "Disclaimer: This report reflects an independent advisory opinion based on the information provided. It is not a licensed contractor assessment or legal advice. Always verify with a qualified HVAC professional before making final decisions.", size: 18, italics: true, color: "999999" })],
+      spacing: { before: 200, after: 120 },
+      border: { top: { style: BorderStyle.SINGLE, size: 1, color: "dddddd", space: 4 } },
+    })
+  );
+}
       } else if (clean.length > 0) {
         const parts = clean.split(/(\*\*[^*]+\*\*)/g);
         const runs = parts.map(part => {
