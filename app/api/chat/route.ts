@@ -104,7 +104,7 @@ const SYSTEM_PROMPT = [
   "SECTION 4 - RED FLAGS",
   "Specific to their conversation. If none, say so honestly.",
   "",
-  "SECTION 5 - FIVE TAILORED QUESTIONS FOR THEIR CONTRACTOR",
+  "SECTION 5 - FIVE TAILORED QUESTIONS FOR THEIR CONTRACTOR (number these 1 through 5, use format: 1. question text - never use bullet points or dashes for this section)",
   "Based on their specific situation, not generic.",
   "",
   "SECTION 6 - CLEAR RECOMMENDATION",
