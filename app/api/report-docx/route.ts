@@ -107,20 +107,19 @@ function buildDocChildren(text: string) {
           })
         );
       } else if (clean.startsWith("If any details above")) {
-  children.push(
-    new Paragraph({
-      children: [new TextRun({ text: clean, size: 20, italics: true, color: "666666" })],
-      spacing: { after: 120 },
-    })
-  );
-  children.push(
-    new Paragraph({
-      children: [new TextRun({ text: "Disclaimer: This report reflects an independent advisory opinion based on the information provided. It is not a licensed contractor assessment or legal advice. Always verify with a qualified HVAC professional before making final decisions.", size: 18, italics: true, color: "999999" })],
-      spacing: { before: 200, after: 120 },
-      border: { top: { style: BorderStyle.SINGLE, size: 1, color: "dddddd", space: 4 } },
-    })
-  );
-}
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: clean, size: 20, italics: true, color: "666666" })],
+            spacing: { after: 120 },
+          })
+        );
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: "Disclaimer: This report reflects an independent advisory opinion based on the information provided. It is not a licensed contractor assessment or legal advice. Always verify with a qualified HVAC professional before making final decisions.", size: 18, italics: true, color: "999999" })],
+            spacing: { before: 200, after: 120 },
+            border: { top: { style: BorderStyle.SINGLE, size: 1, color: "dddddd", space: 4 } },
+          })
+        );
       } else if (clean.length > 0) {
         const parts = clean.split(/(\*\*[^*]+\*\*)/g);
         const runs = parts.map(part => {
@@ -185,9 +184,9 @@ export async function POST(req: NextRequest) {
     });
 
     const buffer = await Packer.toBuffer(doc);
-const uint8Array = new Uint8Array(buffer);
+    const uint8Array = new Uint8Array(buffer);
 
-return new NextResponse(uint8Array, {
+    return new NextResponse(uint8Array, {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
