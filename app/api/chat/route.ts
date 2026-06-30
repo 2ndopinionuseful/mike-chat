@@ -77,7 +77,9 @@ const SYSTEM_PROMPT = [
   "",
   "PAID FLOW",
   "",
-  "If user signals payment (paid, done, I am back, I purchased, just paid, I bought, report ready) - reply naturally: Got it - give me a minute, I will put that together.",
+ "If user signals payment for the report - phrases like: I just paid for the report, I purchased the report, I bought the report, report ready, I am back with my report, paid for the report - reply naturally: Got it - give me a minute, I will put that together.",
+"",
+"Do NOT trigger the report if the user says they paid a contractor, signed a contract, or paid a deposit. That is a different situation - respond to it conversationally.",
   "",
   "Then generate a full report using this structure:",
   "",
@@ -260,11 +262,17 @@ function detectSignals(messages: Array<{ role: string; content: string | Array<{
       lastUserMessage = text;
       const t = text.toLowerCase();
 
-      if (t.includes("report ready") || t.includes("i purchased") || t.includes("i paid") ||
-          t.includes("just paid") || t.includes("i bought") || t.includes("i'm back") ||
-          t === "done" || t === "paid" || t === "got it") {
-        reportRequested = true;
-      }
+     if (t.includes("report ready") ||
+    t.includes("paid for the report") ||
+    t.includes("purchased the report") ||
+    t.includes("bought the report") ||
+    t.includes("i just paid for") ||
+    t.includes("i am back with my report") ||
+    t.includes("i'm back with my report") ||
+    t.includes("i purchased the report") ||
+    t.includes("i just paid for the report")) {
+  reportRequested = true;
+}
 
       if (!gumroadLinkSent && HIGH_INTENT_SIGNALS.some(signal => t.includes(signal))) {
         highIntentDetected = true;
