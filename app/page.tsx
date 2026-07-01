@@ -220,6 +220,9 @@ export default function Home() {
       setMessages([INITIAL_MESSAGE]);
       setInput("");
       setPendingImage(null);
+      if (inputRef.current) {
+        inputRef.current.style.height = "auto";
+      }
     }
   };
 
@@ -245,6 +248,7 @@ export default function Home() {
     setMessages(newMessages);
     setInput("");
     setPendingImage(null);
+    if (inputRef.current) inputRef.current.style.height = "auto";
     setLoading(true);
     const apiMessages = newMessages.map(m => {
       if (typeof m.content === "string") {
@@ -462,6 +466,11 @@ export default function Home() {
           </button>
           <input ref={fileRef} type="file" accept="image/*" onChange={handleImage} style={{display:"none"}}/>
           <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey}
+            onInput={(e) => {
+              const t = e.currentTarget;
+              t.style.height = "auto";
+              t.style.height = Math.min(t.scrollHeight, 160) + "px";
+            }}
             placeholder={pendingImage ? "Add a note or just hit send..." : "Reply..."}
             rows={1} disabled={loading}
             style={{flex:1,background:"#1d1d1d",border:"1px solid #262626",borderRadius:"11px",color:"#ccc",padding:"10px 12px",fontSize:"14px",fontFamily:"Georgia,serif",resize:"none" as const,outline:"none",lineHeight:"1.5",maxHeight:"160px",overflowY:"auto" as const}}/>
