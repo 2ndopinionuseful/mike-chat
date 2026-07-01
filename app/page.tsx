@@ -321,7 +321,7 @@ export default function Home() {
 
   return (
     <div style={{minHeight:"100vh",background:"#0f0f0f",display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",fontFamily:"Georgia,serif"}}>
-      <div style={{width:"100%",maxWidth:"500px",background:"#161616",borderRadius:"16px",border:"1px solid #232323",display:"flex",flexDirection:"column",height:"calc(100vh - 32px)",maxHeight:"760px",overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,.7)"}}>
+      <div style={{width:"100%",maxWidth:"min(780px, calc(100vw - 32px))",background:"#161616",borderRadius:"16px",border:"1px solid #232323",display:"flex",flexDirection:"column",height:"calc(100vh - 32px)",maxHeight:"860px",overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,.7)"}}>
 
         <div style={{padding:"12px 18px",borderBottom:"1px solid #1f1f1f",display:"flex",flexDirection:"column" as const,alignItems:"center",gap:"8px"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%"}}>
@@ -353,11 +353,11 @@ export default function Home() {
                 />
               )}
               {showTooltip && (
-                <div style={{position:"absolute" as const,top:"calc(100% + 8px)",right:0,width:"220px",background:"#1e1e1e",border:"1px solid #c8a96e",borderRadius:"10px",padding:"12px 14px",zIndex:100,boxShadow:"0 8px 24px rgba(0,0,0,0.6)"}}>
+                <div style={{position:"absolute" as const,top:"calc(100% + 8px)",right:0,width:"240px",background:"#1e1e1e",border:"1px solid #c8a96e",borderRadius:"10px",padding:"12px 14px",zIndex:100,boxShadow:"0 8px 24px rgba(0,0,0,0.6)"}}>
                   <div style={{color:"#e8d5a3",fontSize:"12px",fontWeight:"600",marginBottom:"6px"}}>What is this?</div>
                   <div style={{color:"#aaa",fontSize:"12px",lineHeight:"1.6"}}>An independent second opinion on your HVAC situation - whether it is a quote, a repair, or a decision you are trying to make.</div>
                   <div style={{color:"#aaa",fontSize:"12px",lineHeight:"1.6",marginTop:"6px"}}>A clear read on what is fair, what is missing, and what is worth questioning before you decide.</div>
-                  <div style={{marginTop:"8px",color:"#666",fontSize:"11px"}}>Tap anywhere to close</div>
+                  <div style={{marginTop:"8px",color:"#666",fontSize:"11px"}}>Tap outside this box to close</div>
                 </div>
               )}
             </div>
