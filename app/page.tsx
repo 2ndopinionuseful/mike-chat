@@ -464,7 +464,7 @@ export default function Home() {
           <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey}
             placeholder={pendingImage ? "Add a note or just hit send..." : "Reply..."}
             rows={1} disabled={loading}
-            style={{flex:1,background:"#1d1d1d",border:"1px solid #262626",borderRadius:"11px",color:"#ccc",padding:"10px 12px",fontSize:"14px",fontFamily:"Georgia,serif",resize:"none" as const,outline:"none",lineHeight:"1.5",maxHeight:"100px",overflowY:"auto" as const}}/>
+            style={{flex:1,background:"#1d1d1d",border:"1px solid #262626",borderRadius:"11px",color:"#ccc",padding:"10px 12px",fontSize:"14px",fontFamily:"Georgia,serif",resize:"none" as const,outline:"none",lineHeight:"1.5",maxHeight:"160px",overflowY:"auto" as const}}/>
           <button onClick={send} disabled={(!input.trim()&&!pendingImage)||loading}
             style={{width:"39px",height:"39px",borderRadius:"50%",background:"#c8a96e",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:(input.trim()||pendingImage)&&!loading?1:0.35}}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
