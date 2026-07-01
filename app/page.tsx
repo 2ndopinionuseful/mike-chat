@@ -110,7 +110,7 @@ function renderMarkdown(text: string, onCopyCode: (code: string) => void, copied
 
 const INITIAL_MESSAGE: Message = {
   role: "assistant",
-  content: "Hey - what's going on with your HVAC? Are you dealing with a quote or just trying to figure something out?"
+  content: "Hey - what's going on with your HVAC? Got a quote or just trying to figure something out?"
 };
 
 export default function Home() {
@@ -322,25 +322,25 @@ export default function Home() {
     <div style={{minHeight:"100vh",background:"#0f0f0f",display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",fontFamily:"Georgia,serif"}}>
       <div style={{width:"100%",maxWidth:"500px",background:"#161616",borderRadius:"16px",border:"1px solid #232323",display:"flex",flexDirection:"column",height:"calc(100vh - 32px)",maxHeight:"760px",overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,.7)"}}>
 
-        <div style={{padding:"15px 18px",borderBottom:"1px solid #1f1f1f",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-            <div style={{width:"37px",height:"37px",borderRadius:"50%",background:"#c8a96e",color:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:"700",fontSize:"15px"}}>M</div>
-            <div>
-              <div style={{color:"#ede8dc",fontWeight:"600",fontSize:"15px"}}>Mike</div>
-              <div style={{color:"#aaa",fontSize:"12px",display:"flex",alignItems:"center",gap:"4px",marginTop:"2px"}}>
-                <span style={{width:"6px",height:"6px",borderRadius:"50%",background:"#4caf7d",display:"inline-block"}}/>
-                HVAC Advisor
+        <div style={{padding:"12px 18px",borderBottom:"1px solid #1f1f1f",display:"flex",flexDirection:"column" as const,alignItems:"center",gap:"8px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+              <div style={{width:"37px",height:"37px",borderRadius:"50%",background:"#c8a96e",color:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:"700",fontSize:"15px"}}>M</div>
+              <div>
+                <div style={{color:"#ede8dc",fontWeight:"600",fontSize:"15px"}}>Mike</div>
+                <div style={{color:"#aaa",fontSize:"12px",display:"flex",alignItems:"center",gap:"4px",marginTop:"2px"}}>
+                  <span style={{width:"6px",height:"6px",borderRadius:"50%",background:"#4caf7d",display:"inline-block"}}/>
+                  HVAC Advisor
+                </div>
               </div>
             </div>
+            <div style={{background:"#1c1c1c",border:"1px solid #2d2d2d",color:"#999",fontSize:"11px",padding:"3px 9px",borderRadius:"20px",letterSpacing:".05em",textTransform:"uppercase" as const,textAlign:"center" as const}}>Second Opinion</div>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-            {messages.length > 1 && (
-              <button onClick={startOver} style={{background:"none",border:"none",color:"#555",fontSize:"11px",cursor:"pointer",letterSpacing:"0.03em",textDecoration:"underline",padding:"0"}}>
-                Start over
-              </button>
-            )}
-            <div style={{background:"#1c1c1c",border:"1px solid #2d2d2d",color:"#999",fontSize:"11px",padding:"3px 9px",borderRadius:"20px",letterSpacing:".05em",textTransform:"uppercase" as const}}>Second Opinion</div>
-          </div>
+          {messages.length > 1 && (
+            <button onClick={startOver} style={{background:"#1a1a1a",border:"1px solid #c8a96e",color:"#c8a96e",fontSize:"12px",fontWeight:"600",cursor:"pointer",padding:"5px 20px",borderRadius:"20px",letterSpacing:"0.04em",width:"100%",fontFamily:"Georgia,serif"}}>
+              Start New Conversation
+            </button>
+          )}
         </div>
 
         <div style={{flex:1,overflowY:"auto" as const,padding:"16px 14px",display:"flex",flexDirection:"column" as const,gap:"12px"}}>
