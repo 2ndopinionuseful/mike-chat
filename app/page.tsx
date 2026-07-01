@@ -3,7 +3,8 @@ import { useState, useRef, useEffect } from "react";
 
 type MessageContent =
   | { type: "text"; text: string }
-  | { type: "image"; url: string; mediaType: string; data: string };
+  | { type: "image"; url: string; mediaType: string; data: string }
+  | { type: "pdf"; url: string; mediaType: string; data: string };
 
 type Message = {
   role: "user" | "assistant";
@@ -119,7 +120,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [loadingReport, setLoadingReport] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [pendingImage, setPendingImage] = useState<{data: string; mediaType: string; url: string} | null>(null);
+  const [pendingImage, setPendingImage] = useState<{data: string; mediaType: string; url: string; isPdf?: boolean} | null>(null);
   const [sessionId, setSessionId] = useState<string>("");
   const [restored, setRestored] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
@@ -200,13 +201,19 @@ export default function Home() {
   const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.type === "application/msword" || file.name.endsWith(".docx") || file.name.endsWith(".doc")) {
+      alert("Word documents cannot be uploaded directly. Please paste the text from your quote into the chat, or take a screenshot and upload that instead.");
+      e.target.value = "";
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
       const data = result.split(",")[1];
       const mediaType = file.type;
       const url = URL.createObjectURL(file);
-      setPendingImage({ data, mediaType, url });
+      const isPdf = file.type === "application/pdf";
+      setPendingImage({ data, mediaType, url, isPdf });
     };
     reader.readAsDataURL(file);
     e.target.value = "";
@@ -232,10 +239,12 @@ export default function Home() {
     let apiContent: MessageContent[];
     if (pendingImage) {
       apiContent = [
-        { type: "image", url: pendingImage.url, mediaType: pendingImage.mediaType, data: pendingImage.data },
+        pendingImage.isPdf
+          ? { type: "pdf", url: pendingImage.url, mediaType: pendingImage.mediaType, data: pendingImage.data }
+          : { type: "image", url: pendingImage.url, mediaType: pendingImage.mediaType, data: pendingImage.data },
         ...(input.trim() ? [{ type: "text" as const, text: input.trim() }] : [{ type: "text" as const, text: "Here is my HVAC quote. What do you think?" }])
       ];
-      userMessage = { role: "user", content: apiContent, displayImage: pendingImage.url };
+      userMessage = { role: "user", content: apiContent, displayImage: pendingImage.isPdf ? undefined : pendingImage.url };
     } else {
       userMessage = { role: "user", content: input.trim() };
       apiContent = [{ type: "text", text: input.trim() }];
@@ -259,6 +268,7 @@ export default function Home() {
         content: m.content.map((c: MessageContent) => {
           if (c.type === "text") return { type: "text", text: c.text };
           if (c.type === "image") return { type: "image", source: { type: "base64", media_type: c.mediaType, data: c.data } };
+          if (c.type === "pdf") return { type: "document", source: { type: "base64", media_type: "application/pdf", data: c.data } };
           return c;
         })
       };
@@ -451,8 +461,11 @@ export default function Home() {
 
         {pendingImage && (
           <div style={{padding:"8px 14px",borderTop:"1px solid #1e1e1e",display:"flex",alignItems:"center",gap:"8px"}}>
-            <img src={pendingImage.url} alt="preview" style={{height:"48px",borderRadius:"6px",border:"1px solid #333"}}/>
-            <span style={{color:"#888",fontSize:"12px",flex:1}}>Quote photo ready to send</span>
+            {pendingImage.isPdf
+              ? <div style={{height:"48px",width:"48px",borderRadius:"6px",border:"1px solid #333",background:"#2a1a1a",display:"flex",alignItems:"center",justifyContent:"center",color:"#c8a96e",fontSize:"11px",fontWeight:"700",flexShrink:0}}>PDF</div>
+              : <img src={pendingImage.url} alt="preview" style={{height:"48px",borderRadius:"6px",border:"1px solid #333"}}/>
+            }
+            <span style={{color:"#888",fontSize:"12px",flex:1}}>{pendingImage.isPdf ? "PDF ready to send" : "Quote photo ready to send"}</span>
             <button onClick={()=>setPendingImage(null)} style={{background:"none",border:"none",color:"#666",cursor:"pointer",fontSize:"16px"}}>x</button>
           </div>
         )}
@@ -464,7 +477,7 @@ export default function Home() {
               <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>
             </svg>
           </button>
-          <input ref={fileRef} type="file" accept="image/*" onChange={handleImage} style={{display:"none"}}/>
+          <input ref={fileRef} type="file" accept="image/*,.pdf" onChange={handleImage} style={{display:"none"}}/>
           <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey}
             onInput={(e) => {
               const t = e.currentTarget;
