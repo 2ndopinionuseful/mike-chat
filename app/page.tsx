@@ -11,6 +11,10 @@ type Message = {
   displayImage?: string;
 };
 
+function generateSessionId(): string {
+  return "s_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
+}
+
 function renderMarkdown(text: string, onCopyCode: (code: string) => void, copiedCode: boolean) {
   const lines = text.split("\n");
   const elements: React.ReactNode[] = [];
@@ -65,7 +69,7 @@ function renderMarkdown(text: string, onCopyCode: (code: string) => void, copied
 
     if (line.includes("Your revision code:")) {
       const codeMatch = line.match(/MK-[A-Z0-9]{4}/i);
-const code = codeMatch ? codeMatch[0].toUpperCase() : "";
+      const code = codeMatch ? codeMatch[0].toUpperCase() : "";
       elements.push(
         <div key={key++} style={{ marginTop: "16px", marginBottom: "8px", background: "#1a2a1a", border: "1px solid #c8a96e", borderRadius: "10px", padding: "12px 14px" }}>
           <div style={{ color: "#aaa", fontSize: "11px", letterSpacing: "0.05em", textTransform: "uppercase" as const, marginBottom: "6px" }}>Save this code for your free revision</div>
@@ -104,38 +108,68 @@ const code = codeMatch ? codeMatch[0].toUpperCase() : "";
   return <div style={{ fontSize: "14px", color: "#ccc" }}>{elements}</div>;
 }
 
+const INITIAL_MESSAGE: Message = {
+  role: "assistant",
+  content: "Hey - what's going on with your HVAC? Are you dealing with a quote or just trying to figure something out?"
+};
+
 export default function Home() {
-  const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", content: "Hey - what's going on with your HVAC? Are you dealing with a quote or just trying to figure something out?" }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingReport, setLoadingReport] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [pendingImage, setPendingImage] = useState<{data: string; mediaType: string; url: string} | null>(null);
+  const [sessionId, setSessionId] = useState<string>("");
+  const [restored, setRestored] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const isPaid = params.get("paid") === "true";
+    const existingId = localStorage.getItem("mike_session_id");
+
+    if (existingId && !isPaid) {
+      setSessionId(existingId);
+      fetch("/api/session?sessionId=" + existingId)
+        .then(res => res.json())
+        .then(data => {
+          if (data.messages && Array.isArray(data.messages) && data.messages.length > 1) {
+            setMessages(data.messages);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setRestored(true));
+    } else {
+      const newId = generateSessionId();
+      localStorage.setItem("mike_session_id", newId);
+      setSessionId(newId);
+      setRestored(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!sessionId || messages.length <= 1 || !restored) return;
+    fetch("/api/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, messages }),
+    }).catch(() => {});
+  }, [messages, sessionId, restored]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading, loadingReport]);
 
   useEffect(() => {
-    if (messages.length > 1) {
-      localStorage.setItem("mike_conversation", JSON.stringify(messages));
-    }
-  }, [messages]);
-
-  useEffect(() => {
+    if (!restored) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("paid") === "true") {
-      const saved = localStorage.getItem("mike_conversation");
-      const restored: Message[] = saved ? JSON.parse(saved) : messages;
       window.history.replaceState({}, "", "/");
-      localStorage.removeItem("mike_conversation");
       const paidMessage: Message = { role: "user", content: "I just paid - please write up my report." };
-      const newMessages = [...restored, paidMessage];
+      const newMessages = [...messages, paidMessage];
       setMessages(newMessages);
       setLoading(true);
       setLoadingReport(true);
@@ -160,7 +194,7 @@ export default function Home() {
           setLoadingReport(false);
         });
     }
-  }, []);
+  }, [restored]);
 
   const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -179,8 +213,10 @@ export default function Home() {
 
   const startOver = () => {
     if (confirm("Start a new conversation? Your current chat will be cleared.")) {
-      localStorage.removeItem("mike_conversation");
-      setMessages([{ role: "assistant", content: "Hey - what's going on with your HVAC? Are you dealing with a quote or just trying to figure something out?" }]);
+      const newId = generateSessionId();
+      localStorage.setItem("mike_session_id", newId);
+      setSessionId(newId);
+      setMessages([INITIAL_MESSAGE]);
       setInput("");
       setPendingImage(null);
     }
