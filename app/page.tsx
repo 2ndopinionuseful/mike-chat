@@ -337,8 +337,22 @@ export default function Home() {
             <div style={{background:"#1c1c1c",border:"1px solid #2d2d2d",color:"#999",fontSize:"11px",padding:"3px 9px",borderRadius:"20px",letterSpacing:".05em",textTransform:"uppercase" as const,textAlign:"center" as const}}>Second Opinion</div>
           </div>
           {messages.length > 1 && (
-            <button onClick={startOver} style={{background:"#1a1a1a",border:"1px solid #c8a96e",color:"#c8a96e",fontSize:"12px",fontWeight:"600",cursor:"pointer",padding:"5px 20px",borderRadius:"20px",letterSpacing:"0.04em",width:"100%",fontFamily:"Georgia,serif"}}>
-              Start New Conversation
+            <button onClick={startOver} style={{
+              background: hasReport ? "#1a1a1a" : "none",
+              border: hasReport ? "1px solid #c8a96e" : "none",
+              color: hasReport ? "#c8a96e" : "#555",
+              fontSize: hasReport ? "12px" : "11px",
+              fontWeight: hasReport ? "600" : "400",
+              cursor: "pointer",
+              padding: hasReport ? "5px 20px" : "2px 0",
+              borderRadius: hasReport ? "20px" : "0",
+              letterSpacing: "0.03em",
+              textDecoration: hasReport ? "none" : "underline",
+              width: hasReport ? "100%" : "auto",
+              fontFamily: "Georgia,serif",
+              alignSelf: hasReport ? "stretch" : "center",
+            }}>
+              Start new conversation
             </button>
           )}
         </div>
@@ -426,7 +440,7 @@ export default function Home() {
           </button>
         </div>
 
-        <div style={{textAlign:"center" as const,color:"#777",fontSize:"11px",padding:"8px",letterSpacing:".04em",borderTop:"1px solid #191919"}}>
+        <div style={{textAlign:"center" as const,color:"#999",fontSize:"11px",padding:"8px",letterSpacing:".04em",borderTop:"1px solid #222"}}>
           HVAC only - No contractor ties - Your call
         </div>
       </div>
