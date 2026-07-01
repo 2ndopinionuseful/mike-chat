@@ -11,7 +11,7 @@ type Message = {
   displayImage?: string;
 };
 
-function renderMarkdown(text: string) {
+function renderMarkdown(text: string, onCopyCode: (code: string) => void, copiedCode: boolean) {
   const lines = text.split("\n");
   const elements: React.ReactNode[] = [];
   let key = 0;
@@ -33,12 +33,6 @@ function renderMarkdown(text: string) {
       );
       continue;
     }
-
-    const parts = line.split(/(\*\*[^*]+\*\*)/g);
-    const rendered = parts.map((part, pi) => {
-      const m = part.match(/^\*\*(.+)\*\*$/);
-      return m ? <strong key={pi}>{m[1]}</strong> : part;
-    });
 
     if (line.trim().startsWith("- ") || line.trim().startsWith("* ")) {
       const bulletText = line.trim().substring(2);
@@ -69,6 +63,26 @@ function renderMarkdown(text: string) {
       continue;
     }
 
+    if (line.includes("Your revision code:")) {
+      const codeMatch = line.match(/Your revision code:\s*\*?\*?([A-Z0-9-]+)\*?\*?/i);
+      const code = codeMatch ? codeMatch[1].trim() : "";
+      elements.push(
+        <div key={key++} style={{ marginTop: "16px", marginBottom: "8px", background: "#1a2a1a", border: "1px solid #c8a96e", borderRadius: "10px", padding: "12px 14px" }}>
+          <div style={{ color: "#aaa", fontSize: "11px", letterSpacing: "0.05em", textTransform: "uppercase" as const, marginBottom: "6px" }}>Save this code for your free revision</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+            <span style={{ color: "#c8a96e", fontWeight: "700", fontSize: "18px", letterSpacing: "0.1em" }}>{code}</span>
+            <button
+              onClick={() => onCopyCode(code)}
+              style={{ background: copiedCode ? "#2a3a2a" : "#c8a96e", border: copiedCode ? "1px solid #4caf7d" : "none", color: copiedCode ? "#4caf7d" : "#111", fontSize: "11px", fontWeight: "700", padding: "4px 10px", borderRadius: "6px", cursor: "pointer", flexShrink: 0, transition: "all 0.2s" }}
+            >
+              {copiedCode ? "Copied!" : "Copy"}
+            </button>
+          </div>
+        </div>
+      );
+      continue;
+    }
+
     const withLinks = line.split(/(https?:\/\/[^\s]+)/g).map((part, pi) =>
       part.match(/^https?:\/\//) ? (
         <a key={pi} href={part} target="_blank" rel="noopener noreferrer" style={{ color: "#c8a96e", textDecoration: "underline" }}>{part}</a>
@@ -79,26 +93,6 @@ function renderMarkdown(text: string) {
         })}</span>
       )
     );
-
-    if (line.includes("Your revision code:")) {
-      const codeMatch = line.match(/Your revision code:\s*\*?\*?([A-Z0-9-]+)\*?\*?/i);
-      const code = codeMatch ? codeMatch[1].trim() : "";
-      elements.push(
-        <div key={key++} style={{ marginTop: "16px", marginBottom: "8px", background: "#1a2a1a", border: "1px solid #c8a96e", borderRadius: "10px", padding: "12px 14px" }}>
-          <div style={{ color: "#aaa", fontSize: "11px", letterSpacing: "0.05em", textTransform: "uppercase" as const, marginBottom: "6px" }}>Save this code for your free revision</div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-            <span style={{ color: "#c8a96e", fontWeight: "700", fontSize: "18px", letterSpacing: "0.1em" }}>{code}</span>
-            <button
-              onClick={() => { navigator.clipboard.writeText(code).then(() => {}); }}
-              style={{ background: "#c8a96e", border: "none", color: "#111", fontSize: "11px", fontWeight: "700", padding: "4px 10px", borderRadius: "6px", cursor: "pointer", flexShrink: 0 }}
-            >
-              Copy
-            </button>
-          </div>
-        </div>
-      );
-      continue;
-    }
 
     elements.push(
       <div key={key++} style={{ marginBottom: "3px", lineHeight: "1.65" }}>
@@ -116,6 +110,7 @@ export default function Home() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingReport, setLoadingReport] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [pendingImage, setPendingImage] = useState<{data: string; mediaType: string; url: string} | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -124,7 +119,7 @@ export default function Home() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, loading, loadingReport]);
 
   useEffect(() => {
     if (messages.length > 1) {
@@ -143,6 +138,7 @@ export default function Home() {
       const newMessages = [...restored, paidMessage];
       setMessages(newMessages);
       setLoading(true);
+      setLoadingReport(true);
       const apiMessages = newMessages.map((m) => ({
         role: m.role,
         content: typeof m.content === "string" ? m.content : m.content,
@@ -161,6 +157,7 @@ export default function Home() {
         })
         .finally(() => {
           setLoading(false);
+          setLoadingReport(false);
         });
     }
   }, []);
@@ -180,6 +177,15 @@ export default function Home() {
     e.target.value = "";
   };
 
+  const startOver = () => {
+    if (confirm("Start a new conversation? Your current chat will be cleared.")) {
+      localStorage.removeItem("mike_conversation");
+      setMessages([{ role: "assistant", content: "Hey - what's going on with your HVAC? Are you dealing with a quote or just trying to figure something out?" }]);
+      setInput("");
+      setPendingImage(null);
+    }
+  };
+
   const send = async () => {
     if ((!input.trim() && !pendingImage) || loading) return;
     let userMessage: Message;
@@ -194,6 +200,10 @@ export default function Home() {
       userMessage = { role: "user", content: input.trim() };
       apiContent = [{ type: "text", text: input.trim() }];
     }
+
+    const isPaymentSignal = input.toLowerCase().includes("just paid") || input.toLowerCase().includes("paid for the report") || input.toLowerCase().includes("report ready");
+    if (isPaymentSignal) setLoadingReport(true);
+
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInput("");
@@ -224,6 +234,7 @@ export default function Home() {
       setMessages([...newMessages, { role: "assistant", content: "Something went wrong - try again." }]);
     } finally {
       setLoading(false);
+      setLoadingReport(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   };
@@ -258,11 +269,6 @@ export default function Home() {
     });
   };
 
-  const extractRevisionCode = (text: string): string | null => {
-    const match = text.match(/Your revision code:\s*\*?\*?([A-Z0-9-]+)\*?\*?/i);
-    return match ? match[1].trim() : null;
-  };
-
   const isReport = (text: string) => {
     return text.includes("SECTION 1") || text.includes("SITUATION SUMMARY") || text.includes("revision code");
   };
@@ -272,6 +278,9 @@ export default function Home() {
     const textPart = content.find((c: MessageContent) => c.type === "text");
     return textPart && textPart.type === "text" ? textPart.text : "";
   };
+
+  const hasReport = messages.some(m => m.role === "assistant" && isReport(getDisplayText(m.content)));
+  const lastReport = [...messages].reverse().find(m => m.role === "assistant" && isReport(getDisplayText(m.content)));
 
   return (
     <div style={{minHeight:"100vh",background:"#0f0f0f",display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",fontFamily:"Georgia,serif"}}>
@@ -288,7 +297,14 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <div style={{background:"#1c1c1c",border:"1px solid #2d2d2d",color:"#999",fontSize:"11px",padding:"3px 9px",borderRadius:"20px",letterSpacing:".05em",textTransform:"uppercase" as const}}>Second Opinion</div>
+          <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+            {messages.length > 1 && (
+              <button onClick={startOver} style={{background:"none",border:"none",color:"#555",fontSize:"11px",cursor:"pointer",letterSpacing:"0.03em",textDecoration:"underline",padding:"0"}}>
+                Start over
+              </button>
+            )}
+            <div style={{background:"#1c1c1c",border:"1px solid #2d2d2d",color:"#999",fontSize:"11px",padding:"3px 9px",borderRadius:"20px",letterSpacing:".05em",textTransform:"uppercase" as const}}>Second Opinion</div>
+          </div>
         </div>
 
         <div style={{flex:1,overflowY:"auto" as const,padding:"16px 14px",display:"flex",flexDirection:"column" as const,gap:"12px"}}>
@@ -305,7 +321,7 @@ export default function Home() {
                     : {background:"#1d1d1d",border:"1px solid #262626",color:"#ccc",padding:"12px 14px",borderRadius:"13px 13px 13px 3px",fontSize:"14px",lineHeight:"1.65"}
                   }>
                     {m.role === "assistant"
-                      ? renderMarkdown(getDisplayText(m.content))
+                      ? renderMarkdown(getDisplayText(m.content), copyCode, copiedCode)
                       : getDisplayText(m.content).split(/(https?:\/\/[^\s]+)/g).map((part, i) =>
                           part.match(/^https?:\/\//) ? (
                             <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{color:"#c8a96e",textDecoration:"underline"}}>{part}</a>
@@ -314,26 +330,6 @@ export default function Home() {
                     }
                   </div>
                 )}
-                {m.role === "assistant" && isReport(getDisplayText(m.content)) && (
-                  <button
-                    onClick={() => downloadReport(getDisplayText(m.content))}
-                    style={{
-                      marginTop: "6px",
-                      background: "#1a1a1a",
-                      border: "1px solid #c8a96e",
-                      color: "#c8a96e",
-                      fontSize: "12px",
-                      padding: "6px 14px",
-                      borderRadius: "8px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "5px",
-                    }}
-                  >
-                    Download Report (.docx)
-                  </button>
-                )}
               </div>
             </div>
           ))}
@@ -341,14 +337,29 @@ export default function Home() {
             <div style={{display:"flex",alignItems:"flex-end",gap:"7px"}}>
               <div style={{width:"25px",height:"25px",borderRadius:"50%",background:"#c8a96e",color:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:"700",fontSize:"11px",flexShrink:0}}>M</div>
               <div style={{background:"#1d1d1d",border:"1px solid #262626",padding:"12px 14px",borderRadius:"13px 13px 13px 3px"}}>
-                <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
-                  {[0,1,2].map(i=><span key={i} style={{width:"5px",height:"5px",background:"#444",borderRadius:"50%",display:"inline-block",animation:`bounce 1.2s ${i*0.2}s infinite`}}/>)}
-                </div>
+                {loadingReport ? (
+                  <div style={{color:"#888",fontSize:"13px",fontStyle:"italic"}}>Putting your breakdown together...</div>
+                ) : (
+                  <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
+                    {[0,1,2].map(i=><span key={i} style={{width:"5px",height:"5px",background:"#444",borderRadius:"50%",display:"inline-block",animation:`bounce 1.2s ${i*0.2}s infinite`}}/>)}
+                  </div>
+                )}
               </div>
             </div>
           )}
           <div ref={bottomRef}/>
         </div>
+
+        {hasReport && lastReport && (
+          <div style={{padding:"10px 14px",borderTop:"1px solid #1e1e1e",background:"#111"}}>
+            <button
+              onClick={() => downloadReport(getDisplayText(lastReport.content))}
+              style={{width:"100%",background:"#1a1a1a",border:"1px solid #c8a96e",color:"#c8a96e",fontSize:"13px",padding:"9px 14px",borderRadius:"8px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",fontFamily:"Georgia,serif"}}
+            >
+              Download Report (.docx)
+            </button>
+          </div>
+        )}
 
         {pendingImage && (
           <div style={{padding:"8px 14px",borderTop:"1px solid #1e1e1e",display:"flex",alignItems:"center",gap:"8px"}}>
