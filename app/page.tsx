@@ -110,7 +110,7 @@ function renderMarkdown(text: string, onCopyCode: (code: string) => void, copied
 
 const INITIAL_MESSAGE: Message = {
   role: "assistant",
-  content: "Hey - what's going on with your HVAC? Got a quote or just trying to figure something out?"
+  content: "Hey, I'm Mike.\n\nShare your HVAC quote or situation and I'll help you figure out if it makes sense."
 };
 
 export default function Home() {
@@ -334,25 +334,39 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            <div style={{background:"#1c1c1c",border:"1px solid #2d2d2d",color:"#999",fontSize:"11px",padding:"3px 9px",borderRadius:"20px",letterSpacing:".05em",textTransform:"uppercase" as const,textAlign:"center" as const}}>Second Opinion</div>
+            <div style={{background:"#1a1a1a",border:"1px solid #c8a96e",color:"#c8a96e",fontSize:"11px",padding:"4px 10px",borderRadius:"20px",letterSpacing:".05em",textTransform:"uppercase" as const,textAlign:"center" as const,display:"flex",alignItems:"center",gap:"5px"}}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                <polyline points="9 12 11 14 15 10"/>
+              </svg>
+              Second Opinion
+            </div>
           </div>
           {messages.length > 1 && (
             <button onClick={startOver} style={{
-              background: hasReport ? "#1a1a1a" : "none",
+              background: "none",
               border: hasReport ? "1px solid #c8a96e" : "none",
-              color: hasReport ? "#c8a96e" : "#555",
-              fontSize: hasReport ? "12px" : "11px",
-              fontWeight: hasReport ? "600" : "400",
+              color: "#c8a96e",
+              fontSize: "13px",
+              fontWeight: "600",
               cursor: "pointer",
-              padding: hasReport ? "5px 20px" : "2px 0",
+              padding: hasReport ? "6px 16px" : "2px 0",
               borderRadius: hasReport ? "20px" : "0",
               letterSpacing: "0.03em",
-              textDecoration: hasReport ? "none" : "underline",
+              opacity: hasReport ? 1 : 0.35,
               width: hasReport ? "100%" : "auto",
               fontFamily: "Georgia,serif",
               alignSelf: hasReport ? "stretch" : "center",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
             }}>
-              Start new conversation
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              Start a new conversation
+              <span style={{fontSize:"14px"}}>&#8594;</span>
             </button>
           )}
         </div>
