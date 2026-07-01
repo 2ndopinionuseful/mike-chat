@@ -31,7 +31,7 @@ function renderMarkdown(text: string, onCopyCode: (code: string) => void, copied
     const boldOnly = line.match(/^\*\*(.+)\*\*$/);
     if (boldOnly) {
       elements.push(
-        <div key={key++} style={{ fontWeight: "700", color: "#e8d5a3", marginTop: "10px", marginBottom: "2px", fontSize: "13px", letterSpacing: "0.03em" }}>
+        <div key={key++} style={{ fontWeight: "700", color: "#e8d5a3", marginTop: "10px", marginBottom: "2px", fontSize: "14px", letterSpacing: "0.03em" }}>
           {boldOnly[1]}
         </div>
       );
@@ -320,8 +320,8 @@ export default function Home() {
   const lastReport = [...messages].reverse().find(m => m.role === "assistant" && isReport(getDisplayText(m.content)));
 
   return (
-    <div style={{minHeight:"100vh",background:"#0f0f0f",display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",fontFamily:"Georgia,serif"}}>
-      <div style={{width:"100%",maxWidth:"min(780px, calc(100vw - 32px))",background:"#161616",borderRadius:"16px",border:"1px solid #232323",display:"flex",flexDirection:"column",height:"calc(100vh - 32px)",maxHeight:"860px",overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,.7)"}}>
+    <div className="chat-root" style={{minHeight:"100vh",background:"#0f0f0f",display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",fontFamily:"Georgia,serif"}}>
+      <div style={{width:"100%",maxWidth:"min(780px, calc(100vw - 32px))",background:"#161616",borderRadius:"16px",border:"1px solid #232323",display:"flex",flexDirection:"column",height:"calc(100vh - 32px)",overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,.7)"}}>
 
         <div style={{padding:"12px 18px",borderBottom:"1px solid #1f1f1f",display:"flex",flexDirection:"column" as const,alignItems:"center",gap:"8px"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%"}}>
@@ -400,7 +400,7 @@ export default function Home() {
                   <img src={m.displayImage} alt="quote" style={{maxWidth:"100%",borderRadius:"10px",border:"1px solid #333"}}/>
                 )}
                 {getDisplayText(m.content) && (
-                  <div style={m.role==="user"
+                  <div className="msg-bubble" style={m.role==="user"
                     ? {background:"#c8a96e",color:"#111",padding:"10px 13px",borderRadius:"13px 13px 3px 13px",fontSize:"14px",lineHeight:"1.65",fontWeight:"500"}
                     : {background:"#1d1d1d",border:"1px solid #262626",color:"#ccc",padding:"12px 14px",borderRadius:"13px 13px 13px 3px",fontSize:"14px",lineHeight:"1.65"}
                   }>
@@ -478,7 +478,7 @@ export default function Home() {
           HVAC only - No contractor ties - Your call
         </div>
       </div>
-      <style>{`@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-4px)}}`}</style>
+      <style>{`@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-4px)}} @media (min-width: 600px) { .chat-root .msg-bubble { font-size: 15px !important; } .chat-root textarea { font-size: 15px !important; } }`}</style>
     </div>
   );
 }
