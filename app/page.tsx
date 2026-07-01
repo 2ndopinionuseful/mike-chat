@@ -122,6 +122,7 @@ export default function Home() {
   const [pendingImage, setPendingImage] = useState<{data: string; mediaType: string; url: string} | null>(null);
   const [sessionId, setSessionId] = useState<string>("");
   const [restored, setRestored] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -334,12 +335,31 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            <div style={{background:"#1a1a1a",border:"1px solid #c8a96e",color:"#c8a96e",fontSize:"11px",padding:"4px 10px",borderRadius:"20px",letterSpacing:".05em",textTransform:"uppercase" as const,textAlign:"center" as const,display:"flex",alignItems:"center",gap:"5px"}}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                <polyline points="9 12 11 14 15 10"/>
-              </svg>
-              Second Opinion
+            <div style={{position:"relative" as const}}>
+              <div
+                onClick={() => setShowTooltip(!showTooltip)}
+                style={{background:"#1a1a1a",border:"1px solid #c8a96e",color:"#c8a96e",fontSize:"11px",padding:"4px 10px",borderRadius:"20px",letterSpacing:".05em",textTransform:"uppercase" as const,textAlign:"center" as const,display:"flex",alignItems:"center",gap:"5px",cursor:"pointer"}}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  <polyline points="9 12 11 14 15 10"/>
+                </svg>
+                Second Opinion
+              </div>
+              {showTooltip && (
+                <div
+                  onClick={() => setShowTooltip(false)}
+                  style={{position:"fixed" as const,top:0,left:0,right:0,bottom:0,zIndex:99}}
+                />
+              )}
+              {showTooltip && (
+                <div style={{position:"absolute" as const,top:"calc(100% + 8px)",right:0,width:"220px",background:"#1e1e1e",border:"1px solid #c8a96e",borderRadius:"10px",padding:"12px 14px",zIndex:100,boxShadow:"0 8px 24px rgba(0,0,0,0.6)"}}>
+                  <div style={{color:"#e8d5a3",fontSize:"12px",fontWeight:"600",marginBottom:"6px"}}>What is this?</div>
+                  <div style={{color:"#aaa",fontSize:"12px",lineHeight:"1.6"}}>An independent second opinion on your HVAC situation - whether it is a quote, a repair, or a decision you are trying to make.</div>
+                  <div style={{color:"#aaa",fontSize:"12px",lineHeight:"1.6",marginTop:"6px"}}>A clear read on what is fair, what is missing, and what is worth questioning before you decide.</div>
+                  <div style={{marginTop:"8px",color:"#666",fontSize:"11px"}}>Tap anywhere to close</div>
+                </div>
+              )}
             </div>
           </div>
           {messages.length > 1 && (
