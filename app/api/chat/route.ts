@@ -77,9 +77,9 @@ const SYSTEM_PROMPT = [
   "",
   "PAID FLOW",
   "",
- "If user signals payment for the report - phrases like: I just paid for the report, I purchased the report, I bought the report, report ready, I am back with my report, paid for the report - reply naturally: Got it - give me a minute, I will put that together.",
-"",
-"Do NOT trigger the report if the user says they paid a contractor, signed a contract, or paid a deposit. That is a different situation - respond to it conversationally.",
+  "If user signals payment for the report - phrases like: I just paid for the report, I purchased the report, I bought the report, report ready, I am back with my report, paid for the report - reply naturally: Got it - give me a minute, I will put that together.",
+  "",
+  "Do NOT trigger the report if the user says they paid a contractor, signed a contract, or paid a deposit. That is a different situation - respond to it conversationally.",
   "",
   "Then generate a full report using this structure:",
   "",
@@ -173,9 +173,12 @@ const SYSTEM_PROMPT = [
   "- Immediately offer the breakdown",
   "- Do NOT ask questions",
   "- Do NOT delay",
+  "- Do NOT add any sentences after the offer link",
   "",
   "Say something like:",
   "I can go a level deeper on this and break it down properly - what is fair, what is missing, and what I would push back on. If you want that for your setup, I can put it together here: https://my2ndopinion.gumroad.com/l/hvac-review - it is $29 and includes a free update within 30 days if anything changes.",
+  "",
+  "STOP after the offer. Do not add any follow-up sentences, instructions, or questions. The offer is the last thing you say. Let the user decide.",
   "",
   "CRITICAL OVERRIDE RULE",
   "",
@@ -183,11 +186,12 @@ const SYSTEM_PROMPT = [
   "- Ignore any rule about not offering in the first reply",
   "- Ignore any rule about offering only after engagement",
   "- Offer immediately. Asking questions instead is a failure.",
+  "- Adding sentences after the offer is also a failure.",
   "",
   "DESIGN PRINCIPLE",
   "",
   "Level 1 builds trust. Bridge introduces value. Level 2 converts.",
-  "Do not push early. Do not delay when asked.",
+  "Do not push early. Do not delay when asked. Do not add friction after the offer.",
 ].join("\n");
 
 function generateSessionId(): string {
@@ -262,17 +266,17 @@ function detectSignals(messages: Array<{ role: string; content: string | Array<{
       lastUserMessage = text;
       const t = text.toLowerCase();
 
-     if (t.includes("report ready") ||
-    t.includes("paid for the report") ||
-    t.includes("purchased the report") ||
-    t.includes("bought the report") ||
-    t.includes("i just paid for") ||
-    t.includes("i am back with my report") ||
-    t.includes("i'm back with my report") ||
-    t.includes("i purchased the report") ||
-    t.includes("i just paid for the report")) {
-  reportRequested = true;
-}
+      if (t.includes("report ready") ||
+          t.includes("paid for the report") ||
+          t.includes("purchased the report") ||
+          t.includes("bought the report") ||
+          t.includes("i just paid for") ||
+          t.includes("i am back with my report") ||
+          t.includes("i'm back with my report") ||
+          t.includes("i purchased the report") ||
+          t.includes("i just paid for the report")) {
+        reportRequested = true;
+      }
 
       if (!gumroadLinkSent && HIGH_INTENT_SIGNALS.some(signal => t.includes(signal))) {
         highIntentDetected = true;
@@ -326,7 +330,7 @@ export async function POST(req: NextRequest) {
         console.error("Redis get error:", e);
       }
     } else if (signals.highIntentDetected && !signals.gumroadLinkSent) {
-      systemPrompt = SYSTEM_PROMPT + "\n\nSYSTEM NOTE: The user has shown LEVEL 2 DECISION INTENT. You MUST offer the breakdown immediately. Do NOT ask any questions. Follow the LEVEL 2 path exactly.";
+      systemPrompt = SYSTEM_PROMPT + "\n\nSYSTEM NOTE: The user has shown LEVEL 2 DECISION INTENT. You MUST offer the breakdown immediately. Do NOT ask any questions. Do NOT add any sentences after the offer link. The offer is your entire response. Follow the LEVEL 2 path exactly.";
     }
 
     const response = await client.messages.create({
