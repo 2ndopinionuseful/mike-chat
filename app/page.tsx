@@ -80,6 +80,26 @@ function renderMarkdown(text: string) {
       )
     );
 
+    if (line.includes("Your revision code:")) {
+      const codeMatch = line.match(/Your revision code:\s*\*?\*?([A-Z0-9-]+)\*?\*?/i);
+      const code = codeMatch ? codeMatch[1].trim() : "";
+      elements.push(
+        <div key={key++} style={{ marginTop: "16px", marginBottom: "8px", background: "#1a2a1a", border: "1px solid #c8a96e", borderRadius: "10px", padding: "12px 14px" }}>
+          <div style={{ color: "#aaa", fontSize: "11px", letterSpacing: "0.05em", textTransform: "uppercase" as const, marginBottom: "6px" }}>Save this code for your free revision</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+            <span style={{ color: "#c8a96e", fontWeight: "700", fontSize: "18px", letterSpacing: "0.1em" }}>{code}</span>
+            <button
+              onClick={() => { navigator.clipboard.writeText(code).then(() => {}); }}
+              style={{ background: "#c8a96e", border: "none", color: "#111", fontSize: "11px", fontWeight: "700", padding: "4px 10px", borderRadius: "6px", cursor: "pointer", flexShrink: 0 }}
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+      );
+      continue;
+    }
+
     elements.push(
       <div key={key++} style={{ marginBottom: "3px", lineHeight: "1.65" }}>
         {withLinks}
@@ -96,6 +116,7 @@ export default function Home() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [pendingImage, setPendingImage] = useState<{data: string; mediaType: string; url: string} | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -228,6 +249,18 @@ export default function Home() {
     } catch {
       alert("Download failed - try again.");
     }
+  };
+
+  const copyCode = (code: string) => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    });
+  };
+
+  const extractRevisionCode = (text: string): string | null => {
+    const match = text.match(/Your revision code:\s*\*?\*?([A-Z0-9-]+)\*?\*?/i);
+    return match ? match[1].trim() : null;
   };
 
   const isReport = (text: string) => {
