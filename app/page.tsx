@@ -124,6 +124,7 @@ export default function Home() {
   const [sessionId, setSessionId] = useState<string>("");
   const [restored, setRestored] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
+  const [isTestMode, setIsTestMode] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -131,11 +132,15 @@ export default function Home() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const isPaid = params.get("paid") === "true";
-    const existingId = localStorage.getItem("mike_session_id");
+    const testMode = params.get("test") === "true";
+    setIsTestMode(testMode);
+
+    const sessionPrefix = testMode ? "test_mike_session_id" : "mike_session_id";
+    const existingId = localStorage.getItem(sessionPrefix);
 
     if (existingId && !isPaid) {
       setSessionId(existingId);
-      fetch("/api/session?sessionId=" + existingId)
+      fetch("/api/session?sessionId=" + existingId + (testMode ? "&test=true" : ""))
         .then(res => res.json())
         .then(data => {
           if (data.messages && Array.isArray(data.messages) && data.messages.length > 1) {
@@ -146,7 +151,7 @@ export default function Home() {
         .finally(() => setRestored(true));
     } else {
       const newId = generateSessionId();
-      localStorage.setItem("mike_session_id", newId);
+      localStorage.setItem(sessionPrefix, newId);
       setSessionId(newId);
       setRestored(true);
     }
@@ -156,7 +161,10 @@ export default function Home() {
     if (!sessionId || messages.length <= 1 || !restored) return;
     fetch("/api/session", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(isTestMode ? { "x-test-mode": "true" } : {}),
+      },
       body: JSON.stringify({ sessionId, messages }),
     }).catch(() => {});
   }, [messages, sessionId, restored]);
@@ -181,7 +189,10 @@ export default function Home() {
       }));
       fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(isTestMode ? { "x-test-mode": "true" } : {}),
+        },
         body: JSON.stringify({ messages: apiMessages }),
       })
         .then((res) => res.json())
@@ -222,7 +233,8 @@ export default function Home() {
   const startOver = () => {
     if (confirm("Start a new conversation? Your current chat will be cleared.")) {
       const newId = generateSessionId();
-      localStorage.setItem("mike_session_id", newId);
+      const sessionPrefix = isTestMode ? "test_mike_session_id" : "mike_session_id";
+      localStorage.setItem(sessionPrefix, newId);
       setSessionId(newId);
       setMessages([INITIAL_MESSAGE]);
       setInput("");
@@ -276,7 +288,10 @@ export default function Home() {
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(isTestMode ? { "x-test-mode": "true" } : {}),
+        },
         body: JSON.stringify({ messages: apiMessages }),
       });
       const data = await res.json();
@@ -335,9 +350,14 @@ export default function Home() {
 
   return (
     <div className="chat-root" style={{minHeight:"100vh",background:"#0f0f0f",display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",fontFamily:"Georgia,serif"}}>
-      <div style={{width:"100%",maxWidth:"min(780px, calc(100vw - 32px))",background:"#161616",borderRadius:"16px",border:"1px solid #232323",display:"flex",flexDirection:"column",height:"calc(100vh - 32px)",overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,.7)"}}>
+      <div style={{width:"100%",maxWidth:"min(780px, calc(100vw - 32px))",background:"#161616",borderRadius:"16px",border:isTestMode ? "1px solid #3a3a1a" : "1px solid #232323",display:"flex",flexDirection:"column",height:"calc(100vh - 32px)",overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,.7)"}}>
 
         <div style={{padding:"12px 18px",borderBottom:"1px solid #1f1f1f",display:"flex",flexDirection:"column" as const,alignItems:"center",gap:"8px"}}>
+          {isTestMode && (
+            <div style={{width:"100%",background:"#2a2a0a",border:"1px solid #666620",borderRadius:"6px",padding:"4px 10px",color:"#aaaa44",fontSize:"11px",textAlign:"center" as const,letterSpacing:"0.05em"}}>
+              TEST MODE - data saved with test: prefix
+            </div>
+          )}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%"}}>
             <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
               <div style={{width:"37px",height:"37px",borderRadius:"50%",background:"#c8a96e",color:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:"700",fontSize:"15px"}}>M</div>
