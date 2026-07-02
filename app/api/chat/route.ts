@@ -315,6 +315,8 @@ function detectSignals(messages: Array<{ role: string; content: string | Array<{
 export async function POST(req: NextRequest) {
   const sessionId = req.headers.get("x-session-id") || generateSessionId();
   const timestamp = new Date().toISOString();
+  const isTestMode = req.headers.get("x-test-mode") === "true";
+  const keyPrefix = isTestMode ? "test:" : "";
 
   try {
     const { messages } = await req.json();
@@ -329,6 +331,7 @@ export async function POST(req: NextRequest) {
       event: "conversation_turn",
       sessionId,
       timestamp,
+      isTestMode,
       messageCount: signals.messageCount,
       gumroadLinkSent: signals.gumroadLinkSent,
       reportRequested: signals.reportRequested,
@@ -386,14 +389,15 @@ export async function POST(req: NextRequest) {
       };
 
       try {
-        await redis.set(revisionCode, JSON.stringify(recordToStore), { ex: 60 * 60 * 24 * 30 });
-        const finalReply = replyText.replace("[REVISION_CODE]", revisionCode);
+        await redis.set(keyPrefix + revisionCode, JSON.stringify(recordToStore), { ex: 60 * 60 * 24 * 30 });
+        const finalReply = replyText.replace("[REVISION_CODE]", keyPrefix + revisionCode);
 
         console.log(JSON.stringify({
           event: "report_generated",
           sessionId,
           timestamp,
-          revisionCode,
+          isTestMode,
+          revisionCode: keyPrefix + revisionCode,
           messageCount: signals.messageCount,
         }));
 
@@ -410,6 +414,7 @@ export async function POST(req: NextRequest) {
         event: "gumroad_link_shown",
         sessionId,
         timestamp,
+        isTestMode,
         messageCount: signals.messageCount,
         highIntentDetected: signals.highIntentDetected,
       }));
