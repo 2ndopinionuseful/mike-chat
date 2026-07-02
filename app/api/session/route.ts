@@ -8,11 +8,13 @@ const redis = new Redis({
 
 export async function POST(req: NextRequest) {
   try {
+    const isTestMode = req.headers.get("x-test-mode") === "true";
+    const keyPrefix = isTestMode ? "test:session:" : "session:";
     const { sessionId, messages } = await req.json();
     if (!sessionId || !messages) {
       return NextResponse.json({ error: "Missing sessionId or messages" }, { status: 400 });
     }
-    await redis.set("session:" + sessionId, JSON.stringify(messages), { ex: 60 * 60 * 24 * 7 });
+    await redis.set(keyPrefix + sessionId, JSON.stringify(messages), { ex: 60 * 60 * 24 * 7 });
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Session save error:", error);
@@ -23,10 +25,12 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const sessionId = req.nextUrl.searchParams.get("sessionId");
+    const isTestMode = req.nextUrl.searchParams.get("test") === "true";
+    const keyPrefix = isTestMode ? "test:session:" : "session:";
     if (!sessionId) {
       return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
     }
-    const data = await redis.get("session:" + sessionId);
+    const data = await redis.get(keyPrefix + sessionId);
     if (!data) {
       return NextResponse.json({ messages: null });
     }
