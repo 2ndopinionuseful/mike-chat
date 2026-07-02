@@ -69,8 +69,8 @@ function renderMarkdown(text: string, onCopyCode: (code: string) => void, copied
     }
 
     if (line.includes("Your revision code:")) {
-      const codeMatch = line.match(/MK-[A-Z0-9]{4}/i);
-      const code = codeMatch ? codeMatch[0].toUpperCase() : "";
+      const codeMatch = line.match(/(test:)?MK-[A-Z0-9]{4}/i);
+const code = codeMatch ? codeMatch[0].toUpperCase() : "";
       elements.push(
         <div key={key++} style={{ marginTop: "16px", marginBottom: "8px", background: "#1a2a1a", border: "1px solid #c8a96e", borderRadius: "10px", padding: "12px 14px" }}>
           <div style={{ color: "#aaa", fontSize: "11px", letterSpacing: "0.05em", textTransform: "uppercase" as const, marginBottom: "6px" }}>Save this code for your free revision</div>
