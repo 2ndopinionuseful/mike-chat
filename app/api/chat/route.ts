@@ -265,7 +265,6 @@ const SYSTEM_PROMPT = [
   "Do not push early. Do not delay when asked. Do not add friction after the offer.",
 ].join("\n");
 
-export const maxDuration = 60;
 
 function generateSessionId(): string {
   return "sess_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
