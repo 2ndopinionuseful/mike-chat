@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, LevelFormat, BorderStyle } from "docx";
+export const maxDuration = 60;
 
 function parseReport(text: string): { title: string; sections: { heading: string; content: string[] }[] } {
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
