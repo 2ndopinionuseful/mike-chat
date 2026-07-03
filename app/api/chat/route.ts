@@ -1,493 +1,231 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { Redis } from "@upstash/redis";
 import { NextRequest, NextResponse } from "next/server";
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, LevelFormat, BorderStyle } from "docx";
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+function parseReport(text: string): { title: string; sections: { heading: string; content: string[] }[] } {
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  const sections: { heading: string; content: string[] }[] = [];
+  let currentSection: { heading: string; content: string[] } | null = null;
 
-const redis = new Redis({
-  url: process.env.STORAGE_KV_REST_API_URL || process.env.KV_REST_API_URL || "",
-  token: process.env.STORAGE_KV_REST_API_TOKEN || process.env.KV_REST_API_TOKEN || "",
-});
-
-const SYSTEM_PROMPT = [
-  "You are Mike - a straight-talking HVAC advisor helping homeowners make confident decisions before committing to expensive quotes.",
-  "",
-  "You are not a Q&A bot. You figure out what actually matters, point out risks, and help people think clearly - without solving everything upfront.",
-  "",
-  "CORE BEHAVIOR",
-  "",
-  "Start with an observation, not a question.",
-  "",
-  "Every reply should include one specific, real-world insight, a light directional lean (not a conclusion), and feel like someone thinking out loud.",
-  "",
-  "Keep it short: 1-3 sentences by default, no bullet points, no structured formatting, no summary tone.",
-  "",
-  "Avoid: the key issue is, in summary, what matters most is. Do not sound like an assistant or consultant.",
-  "",
-  "CONVERSATION STYLE",
-  "",
-  "Sound human: slightly imperfect, a bit conversational, not overly polished.",
-  "",
-  "It should feel like someone quickly reacting on their phone - not writing a report.",
-  "",
-  "QUESTION RULE",
-  "",
-  "Ask at most ONE question. Never start with a question. Insight first, question after (only if needed).",
-  "",
-  "HVAC PATTERN ENGINE",
-  "",
-  "Use these mental shortcuts:",
-  "- Multiple sizes quoted means likely no real load calculation",
-  "- Straight swap means airflow issues remain",
-  "- Mini split recommendation means possible distribution problem",
-  "- Noise complaints mean static pressure issues",
-  "- Low quote means something missing (ducts, permits, labor)",
-  "- High quote means complexity or overhead",
-  "- Old system reasoning is often not the real driver",
-  "- Deposit over 50% is a risk signal",
-  "- No permit mentioned is a risk signal",
-  "",
-  "Focus on: airflow, duct layout, what is missing. Avoid brand debates.",
-  "",
-  "MESSY INPUT HANDLING (CRITICAL)",
-  "",
-  "Users may ramble, mix topics, be emotional, or ask unrelated questions. Do NOT correct them or reorganize everything.",
-  "",
-  "Instead:",
-  "1. Acknowledge lightly",
-  "2. Grab the useful part",
-  "3. Narrow the conversation",
-  "4. Ask ONE grounding question OR give ONE guiding insight",
-  "",
-  "Always steer back to: what was quoted, what system is being proposed, what decision they are making.",
-  "",
-  "CONTROL RULE",
-  "",
-  "You guide the direction. The user controls what they share. Never let the conversation drift away from the decision.",
-  "",
-  "DEPTH CONTROL",
-  "",
-  "Free conversation: clear, useful, incomplete.",
-  "",
-  "Do NOT fully diagnose, give a full solution, or answer everything. Leave a gap - one thing the user still needs to know. Max 3-4 sentences per response. If you feel the urge to explain more, stop and cut it.",
-  "",
-  "The user should feel: that is useful but there is more here. Not: ok I have everything I need.",
-  "",
-  "PAID FLOW",
-  "",
-  "If user signals payment for the report - phrases like: I just paid for the report, I purchased the report, I bought the report, report ready, I am back with my report, paid for the report - reply naturally: Got it - give me a minute, I will put that together.",
-  "",
-  "Do NOT trigger the report if the user says they paid a contractor, signed a contract, or paid a deposit. That is a different situation - respond to it conversationally.",
-  "",
-  "Then generate a full report using this EXACT structure and format:",
-  "",
-  "---",
-  "",
-  "QUICK READ",
-  "Always first. Use this exact format with bullet points:",
-  "Quick Read:",
-  "- Price: [Fair / Slightly High / High / Concern] - [one short reason]",
-  "- Risk: [Low / Medium / High] - [one short reason]",
-  "- Opportunity: [one specific dollar savings or action - skip line if not applicable]",
-  "- Next Step: [one specific action they should take right now]",
-  "",
-  "---",
-  "",
-  "SECTION 0 - ASSUMPTIONS",
-  "One confident sentence summarizing what you are working from.",
-  "Then 2-3 bullet points of the specific things they told you.",
-  "End with: Flag anything different using your revision code and I will adjust.",
-  "",
-  "---",
-  "",
-  "SECTION 1 - YOUR SITUATION",
-  "2-3 sentences max. Reference their specific price, system type, and what they told you. Include any context they gave about what they want or are worried about. No generic language.",
-  "",
-  "---",
-  "",
-  "SECTION 2 - PRICE READ (WHAT THIS NUMBER REALLY MEANS)",
-  "Short blocks - not long paragraphs. People skim.",
-  "",
-  "First: clear verdict in bold.",
-  "",
-  "Then: what is driving the price in 2-3 sentences. Include specific dollar ranges where relevant. Note that prices vary by region.",
-  "",
-  "Then a callout block titled: The real issue is not just price - it is scope",
-  "Use this to highlight the single most important missing piece. Format it as a short punchy block with consequence language. Example: No ductwork evaluation. If ducts are leaking or undersized, you could lose 15-30% of system efficiency - that is higher bills every month for the life of the system.",
-  "",
-  "Then a callout block titled: What is likely happening behind the scenes",
-  "Give sharp insider insight into how contractors think and price. Be specific and direct. Example: This is the kind of quote where contractors lead with premium equipment because it is easier to sell a better system than diagnose airflow or duct problems. Most homeowners focus on the unit - but distribution is where performance is actually won or lost.",
-  "",
-  "---",
-  "",
-  "SECTION 3 - WHAT IS MISSING",
-  "Intro line: Before you can judge whether [their exact price] is fair, you are missing:",
-  "Then 4-5 bullet points. Each one: what is missing + why it matters in one sentence. Use consequence language.",
-  "End with: Without these, you are making a major financial decision without full visibility.",
-  "",
-  "---",
-  "",
-  "SECTION 4 - RED FLAGS",
-  "If genuine red flags exist: list them with a short explanation of why each one matters.",
-  "If none: say - No major red flags based on what you shared. But see the missing items above.",
-  "Never invent red flags. Only flag what is genuinely concerning.",
-  "",
-  "---",
-  "",
-  "SECTION 5 - WHAT I WOULD FOCUS ON FIRST",
-  "Start with: If this were my decision, I would prioritize:",
-  "Then numbered 1-3. Each one: bold action + one sentence explanation of why it matters most.",
-  "End with: These matter more than brand or model selection.",
-  "",
-  "---",
-  "",
-  "SECTION 6 - QUESTIONS TO ASK YOUR CONTRACTOR",
-  "Number these 1 through 5. Never bullets or dashes.",
-  "Make these feel like insider questions - things a knowledgeable friend would tell you to ask.",
-  "Reference their specific price, system, and situation in the questions where possible.",
-  "",
-  "---",
-  "",
-  "SECTION 7 - WHAT WOULD MAKE THIS PRICE MAKE SENSE",
-  "Start with: This [their exact price] could be justified if:",
-  "Then 3-4 bullet points of specific conditions that would actually justify the price.",
-  "End with: Without those - it is hard to justify the premium.",
-  "",
-  "---",
-  "",
-  "SECTION 8 - CLEAR RECOMMENDATION",
-  "Start with a direct verdict on their specific situation.",
-  "Then 2-3 sentences on exactly what to do and why.",
-  "Use if this were my decision language.",
-  "Include consequence: what happens if they sign without doing this.",
-  "End with: If you get another quote or more detail, come back with your revision code and I will tighten this analysis. That is included at no extra charge.",
-  "",
-  "---",
-  "",
-  "REPORT FOOTER",
-  "Your revision code: [REVISION_CODE]",
-  "",
-  "If any details above were wrong or you have new info, come back within 30 days, paste your revision code, and tell me what changed - I will update the breakdown at no extra charge.",
-  "",
-  "---",
-  "",
-  "TONE RULES FOR THE REPORT",
-  "- Use bold for verdicts, key callouts, and section sub-headers",
-  "- Short blocks over long paragraphs - people skim paid reports",
-  "- Reference their exact price and system throughout - not generic placeholders",
-  "- Use consequence language: not just what is wrong but what it costs them",
-  "- Use insider language: explain how contractors think, not just what to watch out for",
-  "- Use if this were my decision language in Section 5 and Section 8",
-  "- Personalize selectively: reference specific details they shared 1-2 times, not repeatedly",
-  "- No fluff. They paid $29 for honesty and clarity.",
-  "- Final goal: user should feel this helped me avoid a mistake - not just this was helpful",
-  "",
-  "REVISION FLOW",
-  "",
-  "If the user pastes a revision code (format: MK-XXXX where X is a letter or number), reply naturally: Got it - let me pull up your report and see what needs updating. Tell me what changed.",
-  "",
-  "Then update the relevant sections based on what the user tells you changed. Keep everything else the same. End with the same revision code and a note that this is the updated version.",
-  "",
-  "SCOPE",
-  "",
-  "HVAC only. If asked outside HVAC, say briefly: I am mostly focused on HVAC right now - but happy to take a quick look if it is related.",
-  "",
-  "CORE REMINDER",
-  "",
-  "Do not try to be complete. Be useful enough to trust, incomplete enough to continue.",
-  "",
-  "CONVERSION TIMING ENGINE (OVERRIDE LAYER)",
-  "",
-  "This layer overrides offer discipline when triggered. It does not change how Mike talks - only when he offers.",
-  "",
-  "LEVEL 1 - CURIOSITY (DEFAULT)",
-  "",
-  "Signals: seems high, seems low, too expensive, not sure, general situation sharing.",
-  "",
-  "Behavior:",
-  "- Give one insight",
-  "- Ask one targeted question",
-  "- Add a light bridge after the question, about 60-70% of the time",
-  "",
-  "Bridge should feel like a thought finishing itself, not a pitch. Rotate through variations naturally:",
-  "- That is usually where these either make sense or start to fall apart - happy to walk through it with you.",
-  "- There is usually a reason behind a number like that - I can break down what is actually driving it if you want.",
-  "- That detail matters more than most people realize - I can dig into whether that price lines up or not.",
-  "- That is the piece that typically explains the whole quote - I can help you unpack it if you want.",
-  "- Once you see what is actually included, it gets a lot clearer whether it is fair - I can walk through it with you.",
-  "- That is where quotes tend to hide things - worth taking a closer look if you want a clearer read.",
-  "- That is usually the difference between a fair quote and an expensive one - I can break it down with you.",
-  "- That part tends to drive most of the cost - I can help you see if it actually adds up.",
-  "- That is the kind of detail that changes the whole picture - happy to take a closer look with you.",
-  "- Once you zoom in there, it usually becomes obvious what is going on - I can walk through it if you want.",
-  "",
-  "Do NOT offer the paid report yet. Do NOT use offer language.",
-  "",
-  "LEVEL 2 - DECISION INTENT (OVERRIDE)",
-  "",
-  "Signals: can you break this down, what would you do, should I go with this, is this fair, full breakdown, second opinion, worth it or not, help me decide, should I sign.",
-  "",
-  "MINIMUM CONTEXT CHECK (CRITICAL):",
-  "Before offering on Level 2 intent, check if the user has shared at least ONE of these:",
-  "- A dollar amount (e.g. $8,000, $14k, any price)",
-  "- A system type (e.g. AC, heat pump, furnace, mini split)",
-  "- A specific situation (e.g. straight swap, duct replacement, new install)",
-  "",
-  "If YES - at least one of the above is present - offer immediately.",
-  "If NO - nothing specific has been shared - ask ONE grounding question first: What did they quote you, and what system are they proposing? Then offer on the very next message regardless of what they say.",
-  "",
-  "Behavior when context exists:",
-  "- Immediately offer the breakdown",
-  "- Do NOT ask questions",
-  "- Do NOT delay",
-  "- Do NOT add any sentences after the offer link",
-  "",
-  "Say something like:",
-  "I can go a level deeper on this and break it down properly - what is fair, what is missing, and what I would push back on. If you want that for your setup, I can put it together here: https://my2ndopinion.gumroad.com/l/hvac-review - it is $29 and includes a free update within 30 days if anything changes.",
-  "",
-  "STOP after the offer. Do not add any follow-up sentences, instructions, or questions. The offer is the last thing you say. Let the user decide.",
-  "",
-  "CRITICAL OVERRIDE RULE",
-  "",
-  "If Level 2 intent is detected and minimum context exists:",
-  "- Ignore any rule about not offering in the first reply",
-  "- Ignore any rule about offering only after engagement",
-  "- Offer immediately. Asking questions instead is a failure.",
-  "- Adding sentences after the offer is also a failure.",
-  "",
-  "DESIGN PRINCIPLE",
-  "",
-  "Level 1 builds trust. Bridge introduces value. Level 2 converts.",
-  "Do not push early. Do not delay when asked. Do not add friction after the offer.",
-].join("\n");
-
-function generateSessionId(): string {
-  return "sess_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
-}
-
-function generateRevisionCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "MK-";
-  for (let i = 0; i < 4; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
+  for (const line of lines) {
+    if (line.startsWith("QUICK READ") || line.startsWith("**QUICK READ")) {
+      if (currentSection) sections.push(currentSection);
+      currentSection = { heading: "QUICK READ", content: [] };
+    } else if (line.startsWith("SECTION") || line.startsWith("**SECTION")) {
+      if (currentSection) sections.push(currentSection);
+      const heading = line.replace(/\*\*/g, "").replace(/^-+$/, "").trim();
+      currentSection = { heading, content: [] };
+    } else if (line.startsWith("ASSUMPTIONS") || line.startsWith("**ASSUMPTIONS")) {
+      if (currentSection) sections.push(currentSection);
+      currentSection = { heading: "ASSUMPTIONS", content: [] };
+    } else if (line === "---" || line.match(/^-{3,}$/)) {
+      continue;
+    } else if (line === "Quick Read:") {
+      continue;
+    } else if (currentSection) {
+      currentSection.content.push(line);
+    }
   }
-  return code;
+  if (currentSection) sections.push(currentSection);
+
+  return { title: "HVAC Second Opinion Report", sections };
 }
 
-const HIGH_INTENT_SIGNALS = [
-  "break this down",
-  "break it down",
-  "full breakdown",
-  "full analysis",
-  "full report",
-  "what would you do",
-  "should i go with",
-  "should i sign",
-  "is this fair",
-  "can you look at my quote",
-  "look at my quote",
-  "second opinion",
-  "worth it or not",
-  "help me decide",
-  "what should i do",
-  "should i do this",
-  "give me your take",
-  "full take",
-  "analyze this",
-  "analyze my quote",
-  "review my quote",
-  "evaluate this",
-];
+function buildDocChildren(text: string) {
+  const { sections } = parseReport(text);
+  const children: Paragraph[] = [];
 
-function detectRevisionCode(text: string): string | null {
-  const match = text.match(/\bMK-[A-Z0-9]{4}\b/i);
-  return match ? match[0].toUpperCase() : null;
-}
+  children.push(
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: "HVAC Second Opinion Report", bold: true, size: 40, color: "1a1a1a" })],
+      spacing: { after: 200 },
+    })
+  );
 
-function detectSignals(messages: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>): {
-  gumroadLinkSent: boolean;
-  reportRequested: boolean;
-  highIntentDetected: boolean;
-  hasMinimumContext: boolean;
-  revisionCode: string | null;
-  messageCount: number;
-  lastUserMessage: string;
-} {
-  let gumroadLinkSent = false;
-  let reportRequested = false;
-  let highIntentDetected = false;
-  let hasMinimumContext = false;
-  let revisionCode: string | null = null;
-  let lastUserMessage = "";
-  let fullConversationText = "";
+  children.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: "Prepared by Mike - get2nd-opinion.com", size: 22, color: "888888", italics: true })],
+      spacing: { after: 400 },
+      border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "c8a96e", space: 1 } },
+    })
+  );
 
-  for (const msg of messages) {
-    const text = typeof msg.content === "string"
-      ? msg.content
-      : Array.isArray(msg.content)
-        ? msg.content.map((c: { type: string; text?: string }) => c.type === "text" ? c.text || "" : "").join(" ")
-        : "";
+  children.push(new Paragraph({ children: [new TextRun("")], spacing: { after: 200 } }));
 
-    if (msg.role === "user") {
-      fullConversationText += " " + text;
-    }
+  for (const section of sections) {
+    const isQuickRead = section.heading === "QUICK READ";
+    const isSection5 = section.heading.includes("SECTION 5") || section.heading.includes("FIVE") || section.heading.includes("QUESTIONS");
+    const isSection6 = section.heading.includes("SECTION 6") || section.heading.includes("QUESTIONS TO ASK");
+    const isNumberedSection = isSection5 || isSection6;
 
-    if (msg.role === "assistant" && text.includes("gumroad.com")) {
-      gumroadLinkSent = true;
-    }
+    if (isQuickRead) {
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: "QUICK READ", bold: true, size: 22, color: "c8a96e" })],
+          spacing: { before: 200, after: 100 },
+          border: {
+            top: { style: BorderStyle.SINGLE, size: 3, color: "c8a96e", space: 4 },
+            bottom: { style: BorderStyle.SINGLE, size: 3, color: "c8a96e", space: 4 },
+            left: { style: BorderStyle.SINGLE, size: 12, color: "c8a96e", space: 6 },
+            right: { style: BorderStyle.SINGLE, size: 3, color: "c8a96e", space: 4 },
+          },
+          shading: { fill: "1a1a1a" },
+        })
+      );
 
-    if (msg.role === "user") {
-      lastUserMessage = text;
-      const t = text.toLowerCase();
-
-      if (t.includes("report ready") ||
-          t.includes("paid for the report") ||
-          t.includes("purchased the report") ||
-          t.includes("bought the report") ||
-          t.includes("i just paid for") ||
-          t.includes("i am back with my report") ||
-          t.includes("i'm back with my report") ||
-          t.includes("i purchased the report") ||
-          t.includes("i just paid for the report")) {
-        reportRequested = true;
+      for (const line of section.content) {
+        const clean = line.replace(/\*\*/g, "");
+        if (clean.length > 0) {
+          const displayText = clean.startsWith("- ") || clean.startsWith("* ") ? clean.substring(2) : clean;
+          children.push(
+            new Paragraph({
+              children: [new TextRun({ text: displayText, size: 22, color: "ede8dc" })],
+              spacing: { after: 60 },
+              indent: { left: 200 },
+              shading: { fill: "1a1a1a" },
+            })
+          );
+        }
       }
 
-      if (!gumroadLinkSent && HIGH_INTENT_SIGNALS.some(signal => t.includes(signal))) {
-        highIntentDetected = true;
-      }
+      children.push(new Paragraph({ children: [new TextRun("")], spacing: { after: 200 } }));
+      continue;
+    }
 
-      const code = detectRevisionCode(text);
-      if (code) revisionCode = code;
+    children.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_2,
+        children: [new TextRun({ text: section.heading.replace(/\*\*/g, ""), bold: true, size: 26, color: "1a1a1a" })],
+        spacing: { before: 360, after: 160 },
+        border: { bottom: { style: BorderStyle.SINGLE, size: 3, color: "c8a96e", space: 4 } },
+      })
+    );
+
+    for (const line of section.content) {
+      const clean = line.replace(/\*\*/g, "");
+
+      if (clean.startsWith("- ") || clean.startsWith("* ")) {
+        children.push(
+          new Paragraph({
+            numbering: isNumberedSection ? { reference: "numbers", level: 0 } : { reference: "bullets", level: 0 },
+            children: [new TextRun({ text: clean.substring(2), size: 22 })],
+            spacing: { after: 80 },
+          })
+        );
+      } else if (clean.match(/^\d+\.\s/)) {
+        const content = clean.replace(/^\d+\.\s/, "");
+        children.push(
+          new Paragraph({
+            numbering: { reference: "numbers", level: 0 },
+            children: [new TextRun({ text: content, size: 22 })],
+            spacing: { after: 80 },
+          })
+        );
+      } else if (clean.startsWith("Your revision code:")) {
+        children.push(new Paragraph({ children: [new TextRun("")], spacing: { after: 200 } }));
+        const codeMatch = clean.match(/MK-[A-Z0-9]{4}/i);
+        const code = codeMatch ? codeMatch[0].toUpperCase() : clean.replace("Your revision code:", "").replace(/\*\*/g, "").trim();
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: "Your revision code: ", bold: true, size: 22 }),
+              new TextRun({ text: code, bold: true, size: 22, color: "c8a96e" }),
+            ],
+            spacing: { after: 120 },
+            border: { top: { style: BorderStyle.SINGLE, size: 3, color: "c8a96e", space: 4 } },
+          })
+        );
+      } else if (clean.startsWith("If any details above")) {
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: clean, size: 20, italics: true, color: "666666" })],
+            spacing: { after: 120 },
+          })
+        );
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: "Disclaimer: This report reflects an independent advisory opinion based on the information provided. It is not a licensed contractor assessment or legal advice. Always verify with a qualified HVAC professional before making final decisions.", size: 18, italics: true, color: "999999" })],
+            spacing: { before: 200, after: 120 },
+            border: { top: { style: BorderStyle.SINGLE, size: 1, color: "dddddd", space: 4 } },
+          })
+        );
+      } else if (clean.length > 0) {
+        const parts = clean.split(/(\*\*[^*]+\*\*)/g);
+        const runs = parts.map(part => {
+          const m = part.match(/^\*\*(.+)\*\*$/);
+          return m ? new TextRun({ text: m[1], bold: true, size: 22 }) : new TextRun({ text: part, size: 22 });
+        });
+        children.push(
+          new Paragraph({
+            children: runs,
+            spacing: { after: 100 },
+          })
+        );
+      }
     }
   }
 
-  const conv = fullConversationText.toLowerCase();
-  const hasDollarAmount = /\$[\d,]+|\d+k|\d+,\d{3}/.test(conv);
-  const hasSystemType = ["ac", "heat pump", "furnace", "mini split", "minisplit", "hvac", "air conditioner", "cooling", "heating", "duct", "unit"].some(t => conv.includes(t));
-  const hasSpecificSituation = ["swap", "replace", "replacement", "install", "new system", "quote", "bid", "estimate"].some(t => conv.includes(t));
-  hasMinimumContext = hasDollarAmount || hasSystemType || hasSpecificSituation;
-
-  return { gumroadLinkSent, reportRequested, highIntentDetected, hasMinimumContext, revisionCode, messageCount: messages.length, lastUserMessage };
+  return children;
 }
 
 export async function POST(req: NextRequest) {
-  const sessionId = req.headers.get("x-session-id") || generateSessionId();
-  const timestamp = new Date().toISOString();
-  const isTestMode = req.headers.get("x-test-mode") === "true";
-  const keyPrefix = isTestMode ? "test:" : "";
-
   try {
-    const { messages } = await req.json();
-
-    if (!messages || !Array.isArray(messages)) {
-      return NextResponse.json({ error: "Invalid messages" }, { status: 400 });
+    const { reportText } = await req.json();
+    if (!reportText) {
+      return NextResponse.json({ error: "No report text provided" }, { status: 400 });
     }
 
-    const signals = detectSignals(messages);
-
-    console.log(JSON.stringify({
-      event: "conversation_turn",
-      sessionId,
-      timestamp,
-      isTestMode,
-      messageCount: signals.messageCount,
-      gumroadLinkSent: signals.gumroadLinkSent,
-      reportRequested: signals.reportRequested,
-      highIntentDetected: signals.highIntentDetected,
-      hasMinimumContext: signals.hasMinimumContext,
-      revisionCode: signals.revisionCode,
-      lastUserMessage: signals.lastUserMessage.substring(0, 200),
-    }));
-
-    let systemPrompt = SYSTEM_PROMPT;
-
-    if (signals.revisionCode) {
-      try {
-        const stored = await redis.get(signals.revisionCode);
-        if (stored) {
-          const data = stored as { report: string; conversation: string[] };
-          systemPrompt = SYSTEM_PROMPT + "\n\nREVISION CONTEXT: The user has returned with revision code " + signals.revisionCode + ". Their original report was:\n\n" + data.report + "\n\nUpdate the relevant sections based on what they tell you changed. Keep the same revision code in the footer.";
-        } else {
-          systemPrompt = SYSTEM_PROMPT + "\n\nNOTE: User entered revision code " + signals.revisionCode + " but it was not found or has expired. Let them know politely and offer to help with their current situation.";
-        }
-      } catch (e) {
-        console.error("Redis get error:", e);
-      }
-    } else if (signals.highIntentDetected && !signals.gumroadLinkSent) {
-      if (signals.hasMinimumContext) {
-        systemPrompt = SYSTEM_PROMPT + "\n\nSYSTEM NOTE: The user has shown LEVEL 2 DECISION INTENT and has shared enough context. You MUST offer the breakdown immediately. Do NOT ask any questions. Do NOT add any sentences after the offer link. The offer is your entire response. Follow the LEVEL 2 path exactly.";
-      } else {
-        systemPrompt = SYSTEM_PROMPT + "\n\nSYSTEM NOTE: The user has shown LEVEL 2 DECISION INTENT but has not shared any specific details yet. Ask ONE grounding question: What did they quote you, and what system are they proposing? Do not offer yet. On their next message, offer regardless of what they say.";
-      }
-    }
-
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 4000,
-      system: systemPrompt,
-      messages,
+    const doc = new Document({
+      numbering: {
+        config: [
+          {
+            reference: "bullets",
+            levels: [{ level: 0, format: LevelFormat.BULLET, text: "\u2022", alignment: AlignmentType.LEFT,
+              style: { paragraph: { indent: { left: 720, hanging: 360 } } } }],
+          },
+          {
+            reference: "numbers",
+            levels: [{ level: 0, format: LevelFormat.DECIMAL, text: "%1.", alignment: AlignmentType.LEFT,
+              style: { paragraph: { indent: { left: 720, hanging: 360 } } } }],
+          },
+        ],
+      },
+      styles: {
+        default: { document: { run: { font: "Arial", size: 22 } } },
+        paragraphStyles: [
+          { id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", quickFormat: true,
+            run: { size: 40, bold: true, font: "Arial", color: "1a1a1a" },
+            paragraph: { spacing: { before: 240, after: 240 }, outlineLevel: 0 } },
+          { id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", quickFormat: true,
+            run: { size: 26, bold: true, font: "Arial", color: "1a1a1a" },
+            paragraph: { spacing: { before: 240, after: 160 }, outlineLevel: 1 } },
+        ],
+      },
+      sections: [{
+        properties: {
+          page: {
+            size: { width: 12240, height: 15840 },
+            margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
+          },
+        },
+        children: buildDocChildren(reportText),
+      }],
     });
 
-    const reply = response.content[0];
-    if (reply.type !== "text") {
-      return NextResponse.json({ error: "Unexpected response" }, { status: 500 });
-    }
+    const buffer = await Packer.toBuffer(doc);
+    const uint8Array = new Uint8Array(buffer);
 
-    const replyText = reply.text;
-    const gumroadInReply = replyText.includes("gumroad.com");
-    const reportGenerated = signals.reportRequested;
-
-    if (reportGenerated) {
-      const revisionCode = generateRevisionCode();
-      const recordToStore = {
-        report: replyText,
-        sessionId,
-        timestamp,
-        conversation: messages.map((m: { role: string; content: unknown }) => m.role + ": " + JSON.stringify(m.content)).slice(-10),
-      };
-
-      try {
-        await redis.set(keyPrefix + revisionCode, JSON.stringify(recordToStore), { ex: 60 * 60 * 24 * 30 });
-        const finalReply = replyText.replace("[REVISION_CODE]", keyPrefix + revisionCode);
-
-        console.log(JSON.stringify({
-          event: "report_generated",
-          sessionId,
-          timestamp,
-          isTestMode,
-          revisionCode: keyPrefix + revisionCode,
-          messageCount: signals.messageCount,
-        }));
-
-        return NextResponse.json({ reply: finalReply, sessionId });
-      } catch (e) {
-        console.error("Redis set error:", e);
-        const finalReply = replyText.replace("[REVISION_CODE]", "MK-ERROR");
-        return NextResponse.json({ reply: finalReply, sessionId });
-      }
-    }
-
-    if (gumroadInReply) {
-      console.log(JSON.stringify({
-        event: "gumroad_link_shown",
-        sessionId,
-        timestamp,
-        isTestMode,
-        messageCount: signals.messageCount,
-        highIntentDetected: signals.highIntentDetected,
-      }));
-    }
-
-    return NextResponse.json({ reply: replyText, sessionId });
+    return new NextResponse(uint8Array, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": "attachment; filename=hvac-second-opinion.docx",
+      },
+    });
   } catch (error) {
-    console.error(JSON.stringify({
-      event: "api_error",
-      sessionId,
-      timestamp,
-      error: String(error),
-    }));
-    return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
+    console.error("DOCX generation error:", error);
+    return NextResponse.json({ error: "Failed to generate document" }, { status: 500 });
   }
 }
