@@ -16,6 +16,8 @@ function generateSessionId(): string {
   return "s_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
 }
 
+const SUPPORTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+
 function renderMarkdown(text: string, onCopyCode: (code: string) => void, copiedCode: boolean) {
   const lines = text.split("\n");
   const elements: React.ReactNode[] = [];
@@ -217,13 +219,18 @@ export default function Home() {
       e.target.value = "";
       return;
     }
+    const isPdf = file.type === "application/pdf";
+    if (!isPdf && !SUPPORTED_IMAGE_TYPES.includes(file.type)) {
+      alert("That image format isn't supported (this often happens with iPhone photos saved as HEIC). Try taking a screenshot instead, or re-save the photo as JPG or PNG before uploading.");
+      e.target.value = "";
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
       const data = result.split(",")[1];
       const mediaType = file.type;
       const url = URL.createObjectURL(file);
-      const isPdf = file.type === "application/pdf";
       setPendingImage({ data, mediaType, url, isPdf });
     };
     reader.readAsDataURL(file);
