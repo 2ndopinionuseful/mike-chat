@@ -269,7 +269,7 @@ export default function Home() {
       apiContent = [{ type: "text", text: input.trim() }];
     }
 
-    const isPaymentSignal = input.toLowerCase().includes("just paid") || input.toLowerCase().includes("paid for the report") || input.toLowerCase().includes("report ready");
+   const isPaymentSignal = ["just paid", "paid for the report", "report ready", "write the report", "write the full report", "write it up", "write my report", "do the breakdown", "do the full breakdown", "do the report", "yes, do that", "go ahead"].some(phrase => input.toLowerCase().includes(phrase));
     if (isPaymentSignal) setLoadingReport(true);
 
     const newMessages = [...messages, userMessage];
