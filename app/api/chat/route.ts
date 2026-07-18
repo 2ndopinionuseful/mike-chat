@@ -110,6 +110,8 @@ const SYSTEM_PROMPT = [
   "",
   "Include a section titled exactly: CONFIDENCE LEVEL, stating High, Moderate, or Low, followed by 2-3 short bullet reasons tied to what information was and wasn't provided - for example, moderate confidence because equipment model wasn't specified and duct condition hasn't been inspected. This helps the user understand how much of the report is based on solid evidence versus reasonable inference.",
   "",
+  "Include a section titled exactly: WHAT COULD CHANGE MY RECOMMENDATION - 2-4 short bullets naming specific new information that would change your conclusion (e.g. 'a ductwork evaluation confirms no airflow issues', 'a load calculation has already been done', 'the contractor updates the proposal to include duct sealing'). This reinforces that the recommendation is evidence-based, not absolute. Don't repeat what's already said in Confidence Level - this section is forward-looking (what would change the answer), not backward-looking (what's currently unknown).",
+  "",
   "Include a section titled exactly: WHAT YOU SHOULD DO with concrete next steps.",
   "",
   "Include a section titled exactly: MESSAGE TO SEND THE CONTRACTOR - write a short, ready-to-copy message the user could literally paste to their contractor or a second contractor, asking the specific questions this report raised. Make it sound like something a homeowner would actually send, not corporate.",
@@ -120,7 +122,7 @@ const SYSTEM_PROMPT = [
   "",
   "Include a section titled exactly: NEXT BEST STEP - the report shouldn't end on analysis alone. Give one immediate, concrete action, with a rough time estimate if reasonable (e.g. 'about 20 minutes') and 2-3 short bullet actions. Keep it practical, not another summary of everything already said.",
   "",
-  "End the report with a line on its own that says exactly: Your revision code: [REVISION_CODE]",
+  "End the report with a line on its own that says exactly: Your revision code: [REVISION_CODE] - output the text [REVISION_CODE] literally, including the square brackets, exactly as written here. Do NOT invent your own code or make up something that looks like a real code (like MK-XY12) - the actual code is generated automatically by the system after you respond, using the literal placeholder text as a marker to find and replace.",
   "",
   "Use this version of the offer until there is genuine homeowner feedback from completed reports. Never imply feedback from other homeowners unless it is true.",
   "",
@@ -259,38 +261,48 @@ export async function POST(req: NextRequest) {
 
     const replyText = reply.text;
 
-    // Detect whether Mike actually wrote a full report by checking the response itself,
-    // rather than guessing user intent before the call. This is the real signal:
-    // Mike was instructed to include [REVISION_CODE] only when delivering a complete report.
-    const reportGenerated = replyText.includes("[REVISION_CODE]") && replyText.includes("SITUATION SUMMARY");
+    // Detect whether Mike actually wrote a full report. We check for the SITUATION SUMMARY
+    // header plus a "Your revision code:" line - we do NOT require the literal [REVISION_CODE]
+    // placeholder text, because models sometimes "fill in" bracketed placeholders with a
+    // plausible-looking invented value instead of reproducing them literally. If we required
+    // the exact placeholder, a report where Mike invented his own fake code would silently
+    // fail to save - which is worse than an obvious error, since it LOOKS like it worked.
+    const hasRevisionCodeLine = /your revision code:/i.test(replyText);
+    const reportGenerated = replyText.includes("SITUATION SUMMARY") && hasRevisionCodeLine;
 
     if (reportGenerated) {
       const revisionCode = generateRevisionCode();
+      const finalCode = keyPrefix + revisionCode;
+
+      // Overwrite whatever appears after "Your revision code:" on that line with the real
+      // generated code - whether Mike wrote the literal [REVISION_CODE] placeholder or
+      // invented his own fake-looking one, this always ends up correct.
+      const finalReply = replyText.replace(/Your revision code:.*/i, "Your revision code: " + finalCode);
+
       const recordToStore = {
-        report: replyText,
+        report: finalReply,
         sessionId,
         timestamp,
         conversation: messages.map((m: { role: string; content: unknown }) => m.role + ": " + JSON.stringify(m.content)).slice(-10),
       };
 
       try {
-        await redis.set(keyPrefix + revisionCode, JSON.stringify(recordToStore), { ex: 60 * 60 * 24 * 30 });
-        const finalReply = replyText.replace("[REVISION_CODE]", keyPrefix + revisionCode);
+        await redis.set(finalCode, JSON.stringify(recordToStore), { ex: 60 * 60 * 24 * 30 });
 
         console.log(JSON.stringify({
           event: "report_generated",
           sessionId,
           timestamp,
           isTestMode,
-          revisionCode: keyPrefix + revisionCode,
+          revisionCode: finalCode,
           messageCount: signals.messageCount,
         }));
 
         return NextResponse.json({ reply: finalReply, sessionId });
       } catch (e) {
         console.error("Redis set error:", e);
-        const finalReply = replyText.replace("[REVISION_CODE]", "MK-ERROR");
-        return NextResponse.json({ reply: finalReply, sessionId });
+        const errorReply = replyText.replace(/Your revision code:.*/i, "Your revision code: MK-ERROR");
+        return NextResponse.json({ reply: errorReply, sessionId });
       }
     }
 
