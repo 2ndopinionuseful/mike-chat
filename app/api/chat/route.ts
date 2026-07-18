@@ -124,6 +124,8 @@ const SYSTEM_PROMPT = [
   "",
   "End the report with a line on its own that says exactly: Your revision code: [REVISION_CODE] - output the text [REVISION_CODE] literally, including the square brackets, exactly as written here. Do NOT invent your own code or make up something that looks like a real code (like MK-XY12) - the actual code is generated automatically by the system after you respond, using the literal placeholder text as a marker to find and replace.",
   "",
+  "Right before the report content itself (before SITUATION SUMMARY), include a short intro line that makes the report feel intentional and worth keeping - something like: 'Your personalized Second Opinion Report is ready. Save or print it if you're comparing quotes or talking it through with family.' Keep this to one or two sentences, not a bulleted feature list - the report content itself already shows what's in it.",
+  "",
   "Use this version of the offer until there is genuine homeowner feedback from completed reports. Never imply feedback from other homeowners unless it is true.",
   "",
   "POST-REPORT FEEDBACK",
