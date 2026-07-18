@@ -62,7 +62,7 @@ const SYSTEM_PROMPT = [
   "",
   "Unclear/rambling: ask ONE grounding question. Partially relevant: answer briefly, then redirect. Emotional: acknowledge lightly, then guide. Technical: translate to real-world impact, then guide. Clean input: proceed normally.",
   "",
-  "One question at a time, prefer narrowing over opening things up. Never stack multiple questions.",
+  "Default to one question at a time. You may ask up to three short, tightly related questions together when they are all needed for the same next decision and can be answered easily in one reply. Do not use headings, numbered lists, or questionnaire-style formatting. If any question needs explanation, ask it separately.",
   "",
   "SUPPORT / PURCHASE REQUESTS",
   "",
@@ -93,6 +93,10 @@ const SYSTEM_PROMPT = [
   "Do not repeat or rephrase the offer again in the same thread.",
   "",
   "If the user accepts, move directly into the report intake or fulfillment flow. Do not keep selling.",
+  "",
+  "Once you have what you need to write the report and the user has confirmed they're ready, write the complete report in that same response, immediately. Never say you'll get back to them, need a few minutes, or will follow up - you have no way to send a message on your own; you only respond when the user sends the next one. If you say 'give me a moment' and stop there, the user gets nothing and the conversation dies.",
+  "",
+  "When you write the full report, always structure it exactly like this so it can be detected and saved: start with a line that says exactly 'SITUATION SUMMARY', then the full breakdown - the bottom line, what the quote covers, what's missing, real issues, red flags vs yellow flags, and a clear recommendation on whether to sign. End the report with a line on its own that says exactly: Your revision code: [REVISION_CODE]",
   "",
   "Use this version of the offer until there is genuine homeowner feedback from completed reports. Never imply feedback from other homeowners unless it is true.",
   "",
@@ -138,15 +142,11 @@ function detectRevisionCode(text: string): string | null {
 }
 
 function detectSignals(messages: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>): {
-  gumroadLinkSent: boolean;
-  reportRequested: boolean;
   hasMinimumContext: boolean;
   revisionCode: string | null;
   messageCount: number;
   lastUserMessage: string;
 } {
-  let gumroadLinkSent = false;
-  let reportRequested = false;
   let hasMinimumContext = false;
   let revisionCode: string | null = null;
   let lastUserMessage = "";
@@ -163,26 +163,8 @@ function detectSignals(messages: Array<{ role: string; content: string | Array<{
       fullConversationText += " " + text;
     }
 
-    if (msg.role === "assistant" && text.includes("gumroad.com")) {
-      gumroadLinkSent = true;
-    }
-
     if (msg.role === "user") {
       lastUserMessage = text;
-      const t = text.toLowerCase();
-
-      if (t.includes("report ready") ||
-          t.includes("paid for the report") ||
-          t.includes("purchased the report") ||
-          t.includes("bought the report") ||
-          t.includes("i just paid for") ||
-          t.includes("i am back with my report") ||
-          t.includes("i'm back with my report") ||
-          t.includes("i purchased the report") ||
-          t.includes("i just paid for the report")) {
-        reportRequested = true;
-      }
-
       const code = detectRevisionCode(text);
       if (code) revisionCode = code;
     }
@@ -194,7 +176,7 @@ function detectSignals(messages: Array<{ role: string; content: string | Array<{
   const hasSpecificSituation = ["swap", "replace", "replacement", "install", "new system", "quote", "bid", "estimate"].some(t => conv.includes(t));
   hasMinimumContext = hasDollarAmount || hasSystemType || hasSpecificSituation;
 
-  return { gumroadLinkSent, reportRequested, hasMinimumContext, revisionCode, messageCount: messages.length, lastUserMessage };
+  return { hasMinimumContext, revisionCode, messageCount: messages.length, lastUserMessage };
 }
 
 export async function POST(req: NextRequest) {
@@ -218,8 +200,6 @@ export async function POST(req: NextRequest) {
       timestamp,
       isTestMode,
       messageCount: signals.messageCount,
-      gumroadLinkSent: signals.gumroadLinkSent,
-      reportRequested: signals.reportRequested,
       hasMinimumContext: signals.hasMinimumContext,
       revisionCode: signals.revisionCode,
       lastUserMessage: signals.lastUserMessage.substring(0, 200),
@@ -254,8 +234,11 @@ export async function POST(req: NextRequest) {
     }
 
     const replyText = reply.text;
-    const gumroadInReply = replyText.includes("gumroad.com");
-    const reportGenerated = signals.reportRequested;
+
+    // Detect whether Mike actually wrote a full report by checking the response itself,
+    // rather than guessing user intent before the call. This is the real signal:
+    // Mike was instructed to include [REVISION_CODE] only when delivering a complete report.
+    const reportGenerated = replyText.includes("[REVISION_CODE]") && replyText.includes("SITUATION SUMMARY");
 
     if (reportGenerated) {
       const revisionCode = generateRevisionCode();
@@ -285,16 +268,6 @@ export async function POST(req: NextRequest) {
         const finalReply = replyText.replace("[REVISION_CODE]", "MK-ERROR");
         return NextResponse.json({ reply: finalReply, sessionId });
       }
-    }
-
-    if (gumroadInReply) {
-      console.log(JSON.stringify({
-        event: "gumroad_link_shown",
-        sessionId,
-        timestamp,
-        isTestMode,
-        messageCount: signals.messageCount,
-      }));
     }
 
     return NextResponse.json({ reply: replyText, sessionId });
