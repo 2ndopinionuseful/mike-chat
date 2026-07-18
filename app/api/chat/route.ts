@@ -132,31 +132,6 @@ function generateRevisionCode(): string {
   return code;
 }
 
-const HIGH_INTENT_SIGNALS = [
-  "break this down",
-  "break it down",
-  "full breakdown",
-  "full analysis",
-  "full report",
-  "what would you do",
-  "should i go with",
-  "should i sign",
-  "is this fair",
-  "can you look at my quote",
-  "look at my quote",
-  "second opinion",
-  "worth it or not",
-  "help me decide",
-  "what should i do",
-  "should i do this",
-  "give me your take",
-  "full take",
-  "analyze this",
-  "analyze my quote",
-  "review my quote",
-  "evaluate this",
-];
-
 function detectRevisionCode(text: string): string | null {
   const match = text.match(/\bMK-[A-Z0-9]{4}\b/i);
   return match ? match[0].toUpperCase() : null;
@@ -165,7 +140,6 @@ function detectRevisionCode(text: string): string | null {
 function detectSignals(messages: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>): {
   gumroadLinkSent: boolean;
   reportRequested: boolean;
-  highIntentDetected: boolean;
   hasMinimumContext: boolean;
   revisionCode: string | null;
   messageCount: number;
@@ -173,7 +147,6 @@ function detectSignals(messages: Array<{ role: string; content: string | Array<{
 } {
   let gumroadLinkSent = false;
   let reportRequested = false;
-  let highIntentDetected = false;
   let hasMinimumContext = false;
   let revisionCode: string | null = null;
   let lastUserMessage = "";
@@ -210,10 +183,6 @@ function detectSignals(messages: Array<{ role: string; content: string | Array<{
         reportRequested = true;
       }
 
-      if (!gumroadLinkSent && HIGH_INTENT_SIGNALS.some(signal => t.includes(signal))) {
-        highIntentDetected = true;
-      }
-
       const code = detectRevisionCode(text);
       if (code) revisionCode = code;
     }
@@ -225,7 +194,7 @@ function detectSignals(messages: Array<{ role: string; content: string | Array<{
   const hasSpecificSituation = ["swap", "replace", "replacement", "install", "new system", "quote", "bid", "estimate"].some(t => conv.includes(t));
   hasMinimumContext = hasDollarAmount || hasSystemType || hasSpecificSituation;
 
-  return { gumroadLinkSent, reportRequested, highIntentDetected, hasMinimumContext, revisionCode, messageCount: messages.length, lastUserMessage };
+  return { gumroadLinkSent, reportRequested, hasMinimumContext, revisionCode, messageCount: messages.length, lastUserMessage };
 }
 
 export async function POST(req: NextRequest) {
@@ -251,7 +220,6 @@ export async function POST(req: NextRequest) {
       messageCount: signals.messageCount,
       gumroadLinkSent: signals.gumroadLinkSent,
       reportRequested: signals.reportRequested,
-      highIntentDetected: signals.highIntentDetected,
       hasMinimumContext: signals.hasMinimumContext,
       revisionCode: signals.revisionCode,
       lastUserMessage: signals.lastUserMessage.substring(0, 200),
@@ -270,12 +238,6 @@ export async function POST(req: NextRequest) {
         }
       } catch (e) {
         console.error("Redis get error:", e);
-      }
-    } else if (signals.highIntentDetected && !signals.gumroadLinkSent) {
-      if (signals.hasMinimumContext) {
-        systemPrompt = SYSTEM_PROMPT + "\n\nSYSTEM NOTE: The user has shown LEVEL 2 DECISION INTENT and has shared enough context. You MUST offer the breakdown immediately. Do NOT ask any questions. Do NOT add any sentences after the offer link. The offer is your entire response. Follow the LEVEL 2 path exactly.";
-      } else {
-        systemPrompt = SYSTEM_PROMPT + "\n\nSYSTEM NOTE: The user has shown LEVEL 2 DECISION INTENT but has not shared any specific details yet. Ask ONE grounding question: What did they quote you, and what system are they proposing? Do not offer yet. On their next message, offer regardless of what they say.";
       }
     }
 
@@ -332,7 +294,6 @@ export async function POST(req: NextRequest) {
         timestamp,
         isTestMode,
         messageCount: signals.messageCount,
-        highIntentDetected: signals.highIntentDetected,
       }));
     }
 
