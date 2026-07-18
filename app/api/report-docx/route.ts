@@ -1,23 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, LevelFormat, TableOfContents, BorderStyle } from "docx";
 
+// A line counts as a section heading if it's short and made up of uppercase letters
+// (allowing spaces, digits, punctuation like & - ( )). This works for both the old
+// "SECTION 1" style headers and the new plain headers like "SITUATION SUMMARY",
+// "WHAT'S MISSING (AND WHY IT MATTERS)", "RED FLAGS VS YELLOW FLAGS", etc.
+// It intentionally does NOT depend on exact wording, so future prompt changes to
+// header text won't silently break report generation again.
+function isSectionHeading(line: string): boolean {
+  const clean = line.replace(/\*\*/g, "").trim();
+  if (clean.length === 0 || clean.length > 70) return false;
+  if (clean.startsWith("- ") || clean.startsWith("* ")) return false;
+  if (/^\d+\.\s/.test(clean)) return false;
+  if (clean.startsWith("Your revision code:")) return false;
+  const letters = clean.replace(/[^A-Za-z]/g, "");
+  if (letters.length === 0) return false;
+  return letters === letters.toUpperCase();
+}
+
 function parseReport(text: string): { title: string; sections: { heading: string; content: string[] }[] } {
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
   const sections: { heading: string; content: string[] }[] = [];
   let currentSection: { heading: string; content: string[] } | null = null;
 
   for (const line of lines) {
-    if (line.startsWith("SECTION") || line.startsWith("**SECTION")) {
+    if (isSectionHeading(line)) {
       if (currentSection) sections.push(currentSection);
       const heading = line.replace(/\*\*/g, "").replace(/^-+$/, "").trim();
       currentSection = { heading, content: [] };
-    } else if (line.startsWith("ASSUMPTIONS") || line.startsWith("**ASSUMPTIONS")) {
-      if (currentSection) sections.push(currentSection);
-      currentSection = { heading: "ASSUMPTIONS", content: [] };
     } else if (line === "---" || line.match(/^-{3,}$/)) {
       continue;
     } else if (currentSection) {
       currentSection.content.push(line);
+    } else {
+      // Content appeared before any recognized heading (e.g. Mike didn't lead with
+      // a heading line). Create a fallback section so we don't silently drop it.
+      currentSection = { heading: "REPORT", content: [line] };
     }
   }
   if (currentSection) sections.push(currentSection);
@@ -65,8 +83,6 @@ function buildDocChildren(text: string) {
   children.push(new Paragraph({ children: [new TextRun("")], spacing: { after: 400 } }));
 
   for (const section of sections) {
-    const isSection5 = section.heading.includes("SECTION 5") || section.heading.includes("FIVE");
-
     children.push(
       new Paragraph({
         heading: HeadingLevel.HEADING_2,
@@ -82,7 +98,7 @@ function buildDocChildren(text: string) {
       if (clean.startsWith("- ") || clean.startsWith("* ")) {
         children.push(
           new Paragraph({
-            numbering: { reference: isSection5 ? "numbers" : "bullets", level: 0 },
+            numbering: { reference: "bullets", level: 0 },
             children: [new TextRun({ text: clean.substring(2), size: 22 })],
             spacing: { after: 80 },
           })
