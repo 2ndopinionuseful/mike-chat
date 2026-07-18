@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, LevelFormat, TableOfContents, BorderStyle } from "docx";
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, LevelFormat, BorderStyle } from "docx";
 
 // A line counts as a section heading if it's short and made up of uppercase letters
 // (allowing spaces, digits, punctuation like & - ( )). This works for both the old
@@ -45,7 +45,7 @@ function parseReport(text: string): { title: string; sections: { heading: string
 
 function buildDocChildren(text: string) {
   const { sections } = parseReport(text);
-  const children: (Paragraph | TableOfContents)[] = [];
+  const children: Paragraph[] = [];
 
   children.push(
     new Paragraph({
@@ -66,21 +66,6 @@ function buildDocChildren(text: string) {
   );
 
   children.push(new Paragraph({ children: [new TextRun("")], spacing: { after: 200 } }));
-
-  children.push(
-    new Paragraph({
-      heading: HeadingLevel.HEADING_2,
-      children: [new TextRun({ text: "Contents", bold: true, size: 28 })],
-      spacing: { before: 200, after: 120 },
-    })
-  );
-
-  children.push(new TableOfContents("Table of Contents", {
-    hyperlink: true,
-    headingStyleRange: "1-2",
-  }));
-
-  children.push(new Paragraph({ children: [new TextRun("")], spacing: { after: 400 } }));
 
   for (const section of sections) {
     children.push(
