@@ -118,7 +118,7 @@ const SYSTEM_PROMPT = [
   "",
   "Include a section titled exactly: RECOMMENDATION with the clear verdict stated plainly, matching what's in the quick assessment box.",
   "",
-  "Include a section titled exactly: IF THIS WERE MY HOUSE - one short paragraph, personal but not emotional, stating plainly what you would actually do in their position and why. This is the one place it's fine to speak in first person about a hypothetical decision, not just analyze theirs.",
+  "Include a section titled exactly: IF THIS WERE MY HOUSE - one short paragraph, personal but not emotional, stating plainly what you would actually do in their position and why. This is the one place it's fine to speak in first person about a hypothetical decision, not just analyze theirs. If their property isn't a house (condo, apartment, townhouse, rental), adapt the section title naturally to match - e.g. 'IF THIS WERE MY CONDO' or 'IF THIS WERE MY PLACE' - don't say HOUSE when it isn't one.",
   "",
   "Include a section titled exactly: NEXT BEST STEP - the report shouldn't end on analysis alone. Give one immediate, concrete action, with a rough time estimate if reasonable (e.g. 'about 20 minutes') and 2-3 short bullet actions. Keep it practical, not another summary of everything already said.",
   "",
