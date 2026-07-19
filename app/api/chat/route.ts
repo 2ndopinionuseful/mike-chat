@@ -273,12 +273,13 @@ export async function POST(req: NextRequest) {
     const reportGenerated = replyText.includes("SITUATION SUMMARY") && hasRevisionCodeLine;
 
     if (reportGenerated) {
-      const revisionCode = generateRevisionCode();
-      const finalCode = keyPrefix + revisionCode;
+      // If the user returned with an existing revision code, reuse that same code -
+      // don't generate a new one. Otherwise this is a first-time report, so create one.
+      const finalCode = signals.revisionCode ? signals.revisionCode : keyPrefix + generateRevisionCode();
 
       // Overwrite whatever appears after "Your revision code:" on that line with the real
-      // generated code - whether Mike wrote the literal [REVISION_CODE] placeholder or
-      // invented his own fake-looking one, this always ends up correct.
+      // code - whether Mike wrote the literal [REVISION_CODE] placeholder or invented his
+      // own fake-looking one, this always ends up correct.
       const finalReply = replyText.replace(/Your revision code:.*/i, "Your revision code: " + finalCode);
 
       const recordToStore = {
