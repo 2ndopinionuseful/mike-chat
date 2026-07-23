@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import FeedbackWidget from "./components/FeedbackWidget";
 
 type MessageContent =
   | { type: "text"; text: string }
@@ -14,6 +15,11 @@ type Message = {
 
 function generateSessionId(): string {
   return "s_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
+}
+
+function getRevisionCode(text: string): string {
+  const match = text.match(/(test:)?MK-[A-Z0-9]{4}/i);
+  return match ? match[0].toUpperCase() : "";
 }
 
 const SUPPORTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -483,6 +489,11 @@ export default function Home() {
             >
               Download Report (.docx)
             </button>
+            <FeedbackWidget
+              revisionCode={getRevisionCode(getDisplayText(lastReport.content))}
+              sessionId={sessionId}
+              isTestMode={isTestMode}
+            />
           </div>
         )}
 
