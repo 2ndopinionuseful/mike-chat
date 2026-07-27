@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Redis } from "@upstash/redis";
 import { NextRequest, NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 
 export const maxDuration = 60;
 
@@ -28,6 +29,12 @@ const SYSTEM_PROMPT = [
   "",
   "Be clear, not vague. Be helpful, not exhaustive. Do not solve the user's exact situation publicly. Earn trust through clarity, not withholding.",
   "",
+  "MOMENTUM OVER COMPLETENESS",
+  "",
+  "If you can provide most of the value with the information already available, do it - don't delay helping the user while chasing the last few details. People come to Mike for quick, practical guidance, not to complete a thorough intake form.",
+  "",
+  "This is a guiding principle that sits above the specific rules below: when in doubt between asking one more question and moving forward with reasonable assumptions, move forward. A useful recommendation at Medium confidence is almost always better than a delayed one chasing perfect information.",
+  "",
   "HOW YOU TALK",
   "",
   "Default to 1-3 sentences. Avoid perfect structure or 'complete thought' endings - a little roughness is fine and preferred.",
@@ -41,6 +48,8 @@ const SYSTEM_PROMPT = [
   "If you introduce a distinction, give one concrete, observable anchor for it.",
   "",
   "If a response starts to feel polished, complete, or 'advisor-like' - shorten it or rough it up. Would someone actually type this casually on their phone in 20 seconds? If not, simplify.",
+  "",
+  "Being casual and direct doesn't mean being cold. When someone's dealing with an expensive repair or replacement, briefly acknowledge their situation before moving into the analysis. Examples: 'Yeah, I can see why you'd want a second opinion.' / 'That's a significant investment, so it's worth taking a careful look.' / 'I'd want to understand that before spending that kind of money too.' Keep these to one sentence - they should feel natural, not scripted or overly sympathetic.",
   "",
   "SCOPE DISCIPLINE (HIGHEST PRIORITY - OVERRIDES STYLE RULES ABOVE WHEN THEY CONFLICT)",
   "",
@@ -63,6 +72,14 @@ const SYSTEM_PROMPT = [
   "Unclear/rambling: ask ONE grounding question. Partially relevant: answer briefly, then redirect. Emotional: acknowledge lightly, then guide. Technical: translate to real-world impact, then guide. Clean input: proceed normally.",
   "",
   "Default to one question at a time. You may ask up to three short, tightly related questions together when they are all needed for the same next decision and can be answered easily in one reply. Do not use headings, numbered lists, or questionnaire-style formatting. If any question needs explanation, ask it separately.",
+  "",
+  "Respect the user's answer. If the user says they don't know, can't find, or doesn't want to provide a piece of information, accept that and continue - do not repeatedly ask for the same information in different phrasing. A genuine follow-up clarification on something new is fine; re-asking because the first answer wasn't the one you wanted is not.",
+  "",
+  "Ask only enough questions to materially improve the recommendation - as a general guideline, no more than 2-3 targeted diagnostic questions before offering meaningful guidance. Once you have enough to give a useful assessment, move forward using reasonable assumptions rather than continuing to probe. If something important is still missing: state the assumption you're making, lower the confidence level if appropriate, and explain what additional information would improve the recommendation - don't stall the conversation waiting for it. The goal is to help quickly, not complete a perfect intake.",
+  "",
+  "LOCATION CAPTURE",
+  "",
+  "Before writing the full report, if the user hasn't already mentioned their ZIP code, city, or metro area, ask for it - ideally ZIP code, but city/metro is fine if that's easier for them to give. This can be combined naturally with other diagnostic questions you're already asking (system type, price, etc.) rather than asked as its own separate question. Location matters for how fair a price actually is, since costs vary a lot by market - explain it that way if asked why you need it. If the user declines to share it or the conversation doesn't naturally allow for it, proceed without it rather than blocking the report - never gate the report on getting a location.",
   "",
   "SUPPORT / PURCHASE REQUESTS",
   "",
@@ -155,6 +172,39 @@ const SYSTEM_PROMPT = [
   "If the user signals they're done, stop completely. Do not add another offer, a review request, a tip request, a final question, or a generic closing line. If they return later, treat it as a fresh conversation."
 ].join("\n");
 
+const EXTRACTION_PROMPT = `You extract structured data from an HVAC advisory conversation into JSON. Output ONLY valid JSON, nothing else - no preamble, no markdown code fences, no explanation.
+
+Extract these fields. Use null for anything not mentioned or not determinable from the conversation. Do not guess or invent values.
+
+{
+  "zipCode": string or null,
+  "city": string or null,
+  "metroArea": string or null,
+  "state": string or null,
+  "equipmentType": string or null,  // e.g. "AC", "Furnace", "Heat Pump", "Mini Split"
+  "installType": string or null,    // "Replacement" or "New Installation"
+  "systemSizeTons": number or null,
+  "systemSizeBtu": number or null,
+  "efficiencyRating": string or null,  // e.g. "SEER2 16", "AFUE 96"
+  "brand": string or null,
+  "brandTier": string or null,      // "Economy", "Mid", "Premium"
+  "ductworkInvolved": boolean or null,
+  "lineSetInvolved": boolean or null,
+  "electricalUpgradeInvolved": boolean or null,
+  "permitRequired": boolean or null,
+  "installComplexity": string or null,  // e.g. "Attic", "Crawlspace", "Rooftop", "Standard"
+  "otherComplexityFactors": string or null,
+  "customerQuoteAmount": number or null,
+  "numberOfQuotesReceived": number or null,
+  "mikeEstimatedRangeLow": number or null,
+  "mikeEstimatedRangeHigh": number or null,
+  "mikeConfidenceLevel": string or null,  // "High", "Moderate", "Low"
+  "mikeRecommendation": string or null,
+  "reportDate": string or null  // ISO date, use the date this extraction is being run if not otherwise clear
+}
+
+Conversation follows:`;
+
 function generateSessionId(): string {
   return "sess_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
 }
@@ -209,6 +259,118 @@ function detectSignals(messages: Array<{ role: string; content: string | Array<{
   hasMinimumContext = hasDollarAmount || hasSystemType || hasSpecificSituation;
 
   return { hasMinimumContext, revisionCode, messageCount: messages.length, lastUserMessage };
+}
+
+// Strips images/PDFs down to a placeholder before anything goes into the
+// extraction prompt. Extraction only needs text - base64 image/document
+// data is wasted tokens at best, and at worst could contain a name,
+// address, or phone number visible in a photographed quote. Keeping only
+// text keeps the extraction call both cheap and minimal-by-default.
+function flattenForExtraction(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((c: { type?: string; text?: string }) => {
+        if (c.type === "text") return c.text || "";
+        if (c.type === "image") return "[image attached - content not included in extraction]";
+        if (c.type === "document") return "[document attached - content not included in extraction]";
+        return "";
+      })
+      .join(" ");
+  }
+  return "";
+}
+
+// Runs the lightweight extraction call itself. Pure function of
+// conversation text -> structured JSON (or null on any failure). Storage
+// is handled separately by saveStructuredData so this stays easy to test
+// and reason about on its own.
+async function extractStructuredData(
+  messages: Array<{ role: string; content: unknown }>,
+  reportText: string
+): Promise<Record<string, unknown> | null> {
+  try {
+    const conversationText = messages
+      .map((m) => m.role + ": " + flattenForExtraction(m.content))
+      .join("\n\n") + "\n\nassistant (final report): " + reportText;
+
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 1000,
+      system: EXTRACTION_PROMPT,
+      messages: [{ role: "user", content: conversationText }],
+    });
+
+    const block = response.content[0];
+    if (block.type !== "text") return null;
+
+    // Model may still wrap output in markdown fences despite instructions - strip defensively.
+    const cleaned = block.text.replace(/```json|```/g, "").trim();
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.error("Structured extraction failed:", e);
+    return null;
+  }
+}
+
+// Runs AFTER the customer's report has already been returned - called via
+// waitUntil so it never adds latency to the response. Writes under a
+// fixed, deterministic key ("data:" + revisionCode), which makes this
+// naturally idempotent: if this ever runs twice for the same report
+// (e.g. a platform-level retry), the second write just overwrites the
+// first with the same data rather than creating a duplicate record.
+//
+// Always writes SOMETHING - a success record with the extracted fields,
+// or a minimal failure record with status "failed" - so extraction
+// failures are visible and queryable later rather than silently missing.
+//
+// NOTE: Redis is a stand-in for a real durable database here. This
+// should migrate to Postgres (via Vercel/Supabase) or similar once
+// volume justifies it - the 1-year TTL is meant to outlive the report
+// cache's 30-day TTL, not to be a permanent home for this data.
+async function saveStructuredData(
+  finalCode: string,
+  sessionId: string,
+  timestamp: string,
+  messages: Array<{ role: string; content: unknown }>,
+  finalReply: string
+): Promise<void> {
+  const key = "data:" + finalCode;
+  try {
+    const structuredData = await extractStructuredData(messages, finalReply);
+
+    const record = structuredData
+      ? {
+          revisionCode: finalCode,
+          sessionId,
+          extractionStatus: "success",
+          extractedAt: new Date().toISOString(),
+          reportGeneratedAt: timestamp,
+          outcome: null, // populated later if/when the user reports back what they decided
+          ...structuredData,
+        }
+      : {
+          revisionCode: finalCode,
+          sessionId,
+          extractionStatus: "failed",
+          extractedAt: new Date().toISOString(),
+          reportGeneratedAt: timestamp,
+        };
+
+    await redis.set(key, JSON.stringify(record), { ex: 60 * 60 * 24 * 365 });
+
+    console.log(JSON.stringify({
+      event: structuredData ? "structured_data_saved" : "structured_data_extraction_failed",
+      sessionId,
+      revisionCode: finalCode,
+      timestamp,
+    }));
+  } catch (e) {
+    // Last-resort catch - even the storage write itself failing should
+    // never throw out of a waitUntil task (unhandled rejections there
+    // are logged by the platform but this keeps our own logging explicit).
+    console.error("saveStructuredData failed entirely:", e);
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -304,6 +466,13 @@ export async function POST(req: NextRequest) {
           revisionCode: finalCode,
           messageCount: signals.messageCount,
         }));
+
+        // Structured extraction runs AFTER this response is returned to the
+        // customer - waitUntil keeps it alive on Vercel's infrastructure
+        // without making the browser wait on it. Report delivery and data
+        // collection are fully decoupled: nothing about extraction can add
+        // latency to, or break, the report the user actually sees.
+        waitUntil(saveStructuredData(finalCode, sessionId, timestamp, messages, finalReply));
 
         return NextResponse.json({ reply: finalReply, sessionId });
       } catch (e) {
