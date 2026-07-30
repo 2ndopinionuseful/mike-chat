@@ -119,7 +119,7 @@ const code = codeMatch ? codeMatch[0].toUpperCase() : "";
 
 const INITIAL_MESSAGE: Message = {
   role: "assistant",
-  content: "Hey, I'm Mike.\n\nShare your HVAC quote or situation and I'll help you figure out if it makes sense."
+  content: "Hey, I'm Mike - your independent HVAC advisor.\n\nWhether you're learning about HVAC, deciding what to do, or reviewing a contractor's quote, I'll help you make a confident, independent decision."
 };
 
 export default function Home() {
@@ -378,7 +378,7 @@ export default function Home() {
                 <div style={{color:"#ede8dc",fontWeight:"600",fontSize:"15px"}}>Mike</div>
                 <div style={{color:"#aaa",fontSize:"12px",display:"flex",alignItems:"center",gap:"4px",marginTop:"2px"}}>
                   <span style={{width:"6px",height:"6px",borderRadius:"50%",background:"#4caf7d",display:"inline-block"}}/>
-                  HVAC Advisor
+                  Independent HVAC Advisor
                 </div>
               </div>
             </div>
@@ -402,8 +402,8 @@ export default function Home() {
               {showTooltip && (
                 <div style={{position:"absolute" as const,top:"calc(100% + 8px)",right:0,width:"240px",background:"#1e1e1e",border:"1px solid #c8a96e",borderRadius:"10px",padding:"12px 14px",zIndex:100,boxShadow:"0 8px 24px rgba(0,0,0,0.6)"}}>
                   <div style={{color:"#e8d5a3",fontSize:"12px",fontWeight:"600",marginBottom:"6px"}}>What is this?</div>
-                  <div style={{color:"#aaa",fontSize:"12px",lineHeight:"1.6"}}>An independent second opinion on your HVAC situation - whether it is a quote, a repair, or a decision you are trying to make.</div>
-                  <div style={{color:"#aaa",fontSize:"12px",lineHeight:"1.6",marginTop:"6px"}}>A clear read on what is fair, what is missing, and what is worth questioning before you decide.</div>
+                  <div style={{color:"#aaa",fontSize:"12px",lineHeight:"1.6"}}>Mike is your independent HVAC advisor - no contractor ties, no commissions, no sales quotas. Just a clear read on your HVAC situation, whether it's a quote, a repair, or a decision you're trying to make.</div>
+                  <div style={{color:"#aaa",fontSize:"12px",lineHeight:"1.6",marginTop:"6px"}}>What's fair, what's missing, and what's worth questioning before you decide.</div>
                   <div style={{marginTop:"8px",color:"#666",fontSize:"11px"}}>Tap outside this box to close</div>
                 </div>
               )}
