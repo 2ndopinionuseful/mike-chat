@@ -119,7 +119,7 @@ const code = codeMatch ? codeMatch[0].toUpperCase() : "";
 
 const INITIAL_MESSAGE: Message = {
   role: "assistant",
-  content: "Hey, I'm Mike - your independent HVAC advisor.\n\nWhether you're learning about HVAC, deciding what to do, or reviewing a contractor's quote, I'll help you make a confident, independent decision."
+  content: "Hey, I'm Mike - your independent HVAC advisor.\n\nWhether you're learning about HVAC or looking for a second opinion, I'll help you move forward with confidence."
 };
 
 export default function Home() {
