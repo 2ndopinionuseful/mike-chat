@@ -1,0 +1,48 @@
+{
+  "datasetType": "market_evidence",
+  "datasetVersion": "0.1",
+  "createdAt": "2026-07-27",
+  "purpose": "Lower-confidence pricing signals - verbal ballparks, budgetary estimates, informal contractor conversations. This is explicitly NOT the same tier as tests/../mike_quote_records_pearland_202605.json, which holds only verified, formal, written proposals with model numbers and full scope. Market evidence informs pattern-spotting over time; it should never be presented to a customer as a market benchmark on its own, and should never be averaged with or substituted for verified quote data.",
+
+  "knowledgeLayers": {
+    "layer1_generalKnowledge": "What the underlying model already knows about HVAC in general - no metro-specific grounding, this is the default/fallback.",
+    "layer2_marketEvidence": "This file. Every quote/pricing conversation collected, tagged by city, date, brand, equipment, scope, and confidence - useful for spotting patterns as volume grows, not yet reliable enough to state as fact.",
+    "layer3_verifiedQuotes": "Only detailed written proposals with model numbers and full scope - see the Pearland quote records file. This is the gold-standard tier Mike should eventually learn from most heavily."
+  },
+
+  "rules": [
+    "Never treat a single market evidence entry as sufficient to state a price range as fact to a customer.",
+    "A pattern only starts to mean something once multiple independent entries (ideally from different sources) converge on a similar range for genuinely comparable equipment/scope - one data point is a data point, not a benchmark.",
+    "Always keep 'ballpark estimate' / 'budgetary estimate' / 'formal written proposal' distinct - see BUYING READINESS section of the system prompt for the customer-facing version of this same distinction.",
+    "Redact any personal information before an entry goes in this file - these are meant to be shareable/referenceable without privacy concern."
+  ],
+
+  "entries": [
+    {
+      "entryId": "COLUMBUS-2026-07-001",
+      "company": "Home Depot (installation services, Rheem)",
+      "date": "2026-07-27",
+      "location": {
+        "city": "Columbus",
+        "metroArea": "Columbus",
+        "state": "OH"
+      },
+      "brand": "Rheem",
+      "estimateType": "ballpark_estimate",
+      "estimateTypeNote": "Verbal ballpark from a Home Depot representative, not a formal written proposal - lowest-reliability tier of evidence.",
+      "priceRanges": [
+        { "scope": "Full system (AC + furnace)", "low": 14000, "high": 16000 },
+        { "scope": "AC only", "low": 10000, "high": 12000 }
+      ],
+      "confidence": "Low-Medium",
+      "writtenProposalReceived": false,
+      "systemDetails": {
+        "tonnage": null,
+        "efficiency": null,
+        "modelNumbers": null,
+        "note": "Not specified in the verbal estimate - typical of ballpark-tier evidence; formal proposals will generally have this level of detail, ballparks generally won't."
+      },
+      "notes": "First live market signal collected. Useful as a single reference point for the Columbus metro, but not enough on its own to state 'a full Rheem system in Columbus costs $14k-16k' as fact - see rules above. Would need several more independent entries, ideally including at least one formal written proposal, before this range could be treated as reasonably reliable."
+    }
+  ]
+}
