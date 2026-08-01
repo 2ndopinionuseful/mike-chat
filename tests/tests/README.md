@@ -8,6 +8,23 @@ This is different from (and complements) the structured-data pricing work: that'
 
 Any prompt change, model change, routing change, or major feature release must rerun the full business regression suite before deployment. The goal isn't just making Mike smarter - it's making sure an improvement in one area doesn't quietly damage another.
 
+**This is a release gate, not a suggestion.** A regression file that nobody's required to run before shipping isn't actually protecting anything - it's just a note that might get read. The distinction that matters:
+- **Live exploratory testing** (poking at Mike, trying new scenarios) finds NEW problems.
+- **Regression testing** (running these exact saved scripts) ensures OLD problems don't come back.
+You need both, and one doesn't substitute for the other.
+
+## Pre-deploy checklist (minimum viable process)
+
+Before every prompt deployment, in this order:
+
+1. Run every test marked **P0 - release blocking** below, using the exact input in each file
+2. Save Mike's actual response into that file's "Actual response log" section
+3. Mark each test Pass or Fail against its required/forbidden behavior
+4. **Do not deploy if a P0 test fails** - fix it first, or explicitly decide (and note why) that shipping anyway is worth the known risk
+5. Non-blocking tests are recommended but don't gate the deploy - run them when you have time, but a fail there is a "fix soon" not a "stop"
+
+Keep only meaningful, repeatable regressions - not a file for every minor wording tweak. A test earns a permanent spot in this suite when it represents a real failure mode worth protecting against long-term, not just something that happened once.
+
 ## When to add a new test
 
 Add a test whenever Mike:
@@ -30,10 +47,13 @@ A prompt change could fix one and quietly break the other. Both need checking, e
 
 ## Current suite
 
-| # | Name | File | Protects against | Business risk if it fails | Status |
-|---|------|------|-------------------|---------------------------|--------|
-| 1 | Houston Pricing | `tests/houston-pricing.md` | Confident, unsupported pricing verdicts | Loss of trust from incorrect financial guidance | PASS (2026-07-27) |
-| 2 | Learn Mode | `tests/learn-mode.md` | Rejecting educational/pre-decision users | Loss of future customers at the top of the funnel | Fix deployed, awaiting re-test confirmation |
+| # | Name | File | Protects against | Business risk if it fails | Release-blocking? | Status |
+|---|------|------|-------------------|---------------------------|--------------------|--------|
+| 1 | Houston Pricing | `tests/houston-pricing.md` | Confident, unsupported pricing verdicts | Loss of trust from incorrect financial guidance | Recommended | PASS (2026-07-27) |
+| 2 | Learn Mode | `tests/learn-mode.md` | Rejecting educational/pre-decision users | Loss of future customers at the top of the funnel | Recommended | Fix deployed, awaiting re-test confirmation |
+| 3 | Large-Home Local Pricing | `tests/large-home-pricing.md` | Ungrounded local ranges + missed implicit signals (multiple systems) + internal-status exposure | Compounds trust loss (wrong assumptions) with credibility loss (self-contradiction, sounding unfinished) | **Yes - blocking** | Fix deployed, awaiting re-test confirmation |
+
+Tests marked release-blocking must pass before any system-prompt-touching deploy, not just changes to the specific area they test - test #3 covers two behavior categories at once (expert reasoning + confidence discipline), so it's a good general-purpose canary for prompt regressions even in unrelated areas.
 
 ## Standard fields for every test
 
