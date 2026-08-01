@@ -336,6 +336,134 @@ Extract these fields:
 
 Conversation follows:`;
 
+// Explicit, stored workflow state - NOT inferred by searching prior messages
+// for marker text. Marker-search is fragile (what if the model paraphrases,
+// or the text changes later?); an explicit state read/write is not.
+type ReportWorkflowState = "not_triggered" | "offered" | "accepted" | "declined" | "report_generated";
+
+async function getReportWorkflowState(sessionId: string): Promise<ReportWorkflowState> {
+  try {
+    const state = await redis.get("report_state:" + sessionId);
+    if (state === "offered" || state === "accepted" || state === "declined" || state === "report_generated") {
+      return state;
+    }
+    return "not_triggered";
+  } catch (e) {
+    console.error("Report workflow state read failed (defaulting to not_triggered):", e);
+    return "not_triggered";
+  }
+}
+
+async function setReportWorkflowState(sessionId: string, state: ReportWorkflowState): Promise<void> {
+  try {
+    // TTL matches the session TTL in /api/session - this state is meaningless
+    // once the underlying conversation itself has expired.
+    await redis.set("report_state:" + sessionId, state, { ex: 60 * 60 * 24 * 7 });
+  } catch (e) {
+    console.error("Report workflow state write failed:", e);
+  }
+}
+
+// Cheap, deterministic, no API call. Only escalate to the (paid, slower)
+// classifier call when there's a real chance this turn contains report-level
+// information - ordinary educational chat should never reach the classifier
+// at all. This is a pre-filter, not a replacement for the classifier.
+function hasReportCandidateSignal(messages: Array<{ role: string; content: unknown }>): boolean {
+  const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
+  if (!lastUserMessage) return false;
+
+  if (Array.isArray(lastUserMessage.content)) {
+    const hasAttachment = (lastUserMessage.content as Array<{ type?: string }>).some(
+      (c) => c.type === "image" || c.type === "pdf"
+    );
+    if (hasAttachment) return true;
+  }
+
+  const fullText = messages
+    .filter((m) => m.role === "user")
+    .map((m) => flattenForExtraction(m.content))
+    .join(" ")
+    .toLowerCase();
+
+  const hasDollarAmount = /\$[\d,]+|\b\d+k\b/.test(fullText);
+  const hasEquipmentOrQuoteTerm = [
+    "ton", "seer", "furnace", "heat pump", "condenser", "coil",
+    "carrier", "trane", "lennox", "daikin", "goodman", "rheem", "american standard",
+    "quote", "proposal", "estimate", "invoice",
+  ].some((t) => fullText.includes(t));
+
+  return hasDollarAmount && hasEquipmentOrQuoteTerm;
+}
+
+// Simple keyword-based accept/decline read of the reply to an offer. Default
+// is accept-leaning (per the requirement: only a clear decline should divert
+// away from the report path) - genuinely ambiguous replies proceed toward
+// the report workflow, where the model's own OFFER instructions take over.
+function isDeclineReply(text: string): boolean {
+  const t = text.toLowerCase();
+  return /\bno\b|not now|not right now|no thanks|maybe later|not interested|just chat|skip the report|don'?t want a report|not today/.test(t);
+}
+// Earlier prompt-only attempts kept leaking analysis through exactly those
+// "harmless" observations, so this version removes the opening for it
+// entirely. This exact text is returned by the application, not generated
+// by the model - see classifyReportOfferTrigger and its use in POST below.
+const FIXED_REPORT_OFFER_RESPONSE = `I've reviewed what you shared and there's enough detail for a meaningful evaluation.
+
+You're one of our early users, so the full Second Opinion Report is free while I'm improving Mike with real homeowner feedback. It will review the pricing, equipment, scope, warranties, missing items and questions to ask. Want me to generate it?`;
+
+const CLASSIFICATION_PROMPT = `You are a classifier, not an HVAC advisor. Decide only whether this conversation has enough specific information for a meaningful, personalized HVAC quote/decision report. Do not draft customer-facing language. Do not perform any HVAC analysis. Output ONLY valid JSON, nothing else - no preamble, no markdown fences.
+
+{
+  "should_offer_report": boolean,
+  "reason": string or null,
+  "evidence_level": "high" | "medium" | "low",
+  "document_type": string or null
+}
+
+Set should_offer_report to true when ANY of these are present:
+- An uploaded contractor quote, proposal, estimate, or invoice
+- Multiple screenshots/images containing substantial quote details
+- Pasted proposal text with real numbers
+- Exact price plus equipment and scope details sufficient for personalized evaluation
+- A comparison of two or more specific quotes
+- A request to judge a specific contractor recommendation or written warranty document
+
+Do NOT set it true for: general education questions, a vague mention of a system with no real numbers or equipment specified, early exploratory conversation, or anything where you're not confident there's enough for a genuinely personalized evaluation.
+
+If uncertain, set should_offer_report to false and evidence_level to "low" - default to normal conversation rather than forcing a report. A missed trigger is far better than a false one.
+
+Conversation follows:`;
+
+// Fail-safe by design: any error here returns null, and the caller treats
+// null exactly like should_offer_report: false - normal conversation
+// proceeds untouched. This gate should never be able to break the chat
+// even if it fails outright.
+async function classifyReportOfferTrigger(
+  messages: Array<{ role: string; content: unknown }>
+): Promise<{ should_offer_report: boolean; reason: string | null; evidence_level: string; document_type: string | null } | null> {
+  try {
+    const conversationText = messages
+      .map((m) => m.role + ": " + flattenForExtraction(m.content))
+      .join("\n\n");
+
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 300,
+      system: CLASSIFICATION_PROMPT,
+      messages: [{ role: "user", content: conversationText }],
+    });
+
+    const block = response.content[0];
+    if (block.type !== "text") return null;
+
+    const cleaned = block.text.replace(/```json|```/g, "").trim();
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.error("Report offer classification failed (fail-safe: proceeding to normal chat):", e);
+    return null;
+  }
+}
+
 function generateSessionId(): string {
   return "sess_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
 }
@@ -546,6 +674,59 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // REPORT OFFER STATE gate - moved out of the prompt and into application
+    // logic after two rounds of testing showed the model would not reliably
+    // hold the boundary even under explicit, named prohibition (see
+    // tests/high-info-quote-flow.md for the full history).
+    //
+    // State is explicitly stored per session (not inferred by searching
+    // message text for marker phrases - that was fragile and got replaced).
+    // Five states: not_triggered -> offered -> accepted|declined -> (accepted
+    // path only) report_generated.
+    const workflowState = await getReportWorkflowState(sessionId);
+
+    if (workflowState === "not_triggered" && !signals.revisionCode) {
+      // Cheap pre-check first - only spend the classifier's API call on
+      // turns that could plausibly contain report-level information.
+      if (hasReportCandidateSignal(messages)) {
+        const classification = await classifyReportOfferTrigger(messages);
+        if (classification && classification.should_offer_report === true && classification.evidence_level !== "low") {
+          console.log(JSON.stringify({
+            event: "report_offer_gate_triggered",
+            sessionId,
+            timestamp,
+            reason: classification.reason,
+            evidenceLevel: classification.evidence_level,
+            documentType: classification.document_type,
+          }));
+          await setReportWorkflowState(sessionId, "offered");
+          // Fixed, application-controlled response - never generated by the
+          // main model, so it can't drift into analysis. Only the report is
+          // offered here - chat is not presented as an equivalent option.
+          return NextResponse.json({ reply: FIXED_REPORT_OFFER_RESPONSE, sessionId });
+        }
+      }
+      // No candidate signal, or classifier didn't trigger - fall through to
+      // normal chat below, completely untouched by any of this.
+    } else if (workflowState === "offered") {
+      // This turn is the user's response to the offer. Determine accept vs.
+      // decline from their message, then let normal reasoning proceed either
+      // way - the system prompt's own OFFER section handles what to actually
+      // say next in both cases.
+      const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
+      const lastUserText = lastUserMessage ? flattenForExtraction(lastUserMessage.content) : "";
+      if (isDeclineReply(lastUserText)) {
+        await setReportWorkflowState(sessionId, "declined");
+        console.log(JSON.stringify({ event: "report_offer_declined", sessionId, timestamp }));
+      } else {
+        await setReportWorkflowState(sessionId, "accepted");
+        console.log(JSON.stringify({ event: "report_offer_accepted", sessionId, timestamp }));
+      }
+      // Falls through to normal chat below either way.
+    }
+    // states "accepted", "declined", "report_generated" all fall through to
+    // normal chat untouched - no re-gating, no re-offering.
+
     const response = await client.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 4000,
@@ -588,6 +769,9 @@ export async function POST(req: NextRequest) {
 
       try {
         await redis.set(finalCode, JSON.stringify(recordToStore), { ex: 60 * 60 * 24 * 30 });
+        // Terminal state for the gate's state machine - not marker-search,
+        // an explicit write, same as every other transition in this flow.
+        await setReportWorkflowState(sessionId, "report_generated");
 
         console.log(JSON.stringify({
           event: "report_generated",
