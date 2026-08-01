@@ -14,14 +14,24 @@
 Here is my HVAC quote. What do you think?
 ```
 
-**Required behavior:**
-- Mike confirms it has understood the document (names real details - brand, model, tonnage, etc.)
-- No more than 1-2 useful observations before the offer
-- No full price verdict in this first response
-- No list of assumptions, missing scope, risks, negotiation points, or contractor questions in this first response
-- Offers the structured Second Opinion Report immediately after the 1-2 observations
+**Required behavior (what Mike DOES do):**
+- Confirms it has understood the document (names real details - brand, model, tonnage, etc.)
+- Gives factual observations only - what the document says, not judgments about it
+- Offers the structured Second Opinion Report immediately after those observations
 - Mentions the report is free during early access
-- Stops and waits for the user's response rather than continuing into deeper analysis unprompted
+- Stops and waits for the user's response
+
+**Forbidden behavior (what Mike must NOT do - check this list carefully, negative assertions catch regressions that positive checks miss):**
+- ❌ No fairness judgment ("this is fair," "this looks reasonable," "not automatically out of line")
+- ❌ No pricing verdict of any kind
+- ❌ No assumptions section or assumption statements
+- ❌ No missing-items / missing-scope analysis
+- ❌ No negotiation advice
+- ❌ No recommendation
+- ❌ No clarifying questions before the report offer (e.g. "is this full system or AC-only," "is this new construction or replacement") - these are exactly the kind of decisive-question instinct that must be suppressed until AFTER the offer, not instead of it
+- ❌ More than 1-2 observations before the offer appears
+- ❌ The conversation ending naturally (user says something like "that's helpful, thanks") without the report ever having been offered
+- ❌ Re-offering the report after it's been explicitly declined
 
 **If the user accepts the offer:**
 - Full report generated (SITUATION SUMMARY + all sections)
@@ -34,11 +44,6 @@ Here is my HVAC quote. What do you think?
 **If the user declines the offer:**
 - Mike continues helping in chat
 - Does NOT repeatedly re-offer the report
-
-**Forbidden behavior:**
-- A full price verdict, assumption list, or recommendation appearing in chat before the report offer has been made
-- The conversation ending naturally (user says something like "that's helpful, thanks") without the report ever having been offered
-- Re-offering the report after it's been explicitly declined
 
 ## Edge case (test alongside the main script)
 
@@ -53,6 +58,30 @@ This should trigger the same behavior regardless of how the information arrives:
 - [ ] Pasted detailed quote text directly into chat
 - [ ] Multiple quote/equipment screenshots uploaded
 - [ ] A conversation that's built up enough exact equipment, price, scope, and warranty detail through back-and-forth text alone (no upload at all)
+
+## Outcome categories (log as one of these three, not just Pass/Fail)
+
+- **PASS** — offer state fully respected: 1-2 factual observations, offer appears immediately, nothing forbidden present
+- **PARTIAL FAIL** — offer does appear, but analysis, judgment, or clarifying questions also appear before or alongside it
+- **FAIL** — no offer at all
+
+## If this fails (PARTIAL FAIL or FAIL) - stop adding prompt language
+
+If the explicit REPORT OFFER STATE gate still doesn't hold, that's a real signal prose-level prohibitions aren't sufficient here, regardless of how explicit they're worded. The next mechanism, in order of preference, moves this out of prompt interpretation into deterministic product logic:
+
+1. A small first pass (separate, cheap model call) classifies whether the current conversation has crossed the high-information threshold - yes/no.
+2. If yes, the application itself forces the next response into the offer template - not a request to the main model to "please offer," but code-level control over what gets generated.
+3. The main reasoning model never gets the opportunity to choose clarifying questions first, because that choice is no longer being made by the model at all for this specific moment.
+
+This is a bigger build than a prompt edit - a second API call, a decision point in `route.ts`, and a template response - so it should only be built if the prompt-only approach is confirmed insufficient by an actual failed test, not preemptively.
+
+## Compliant example (reference)
+
+"I've reviewed the quote. I can see it's a 5-ton Lennox system and the proposal includes more than a basic equipment swap.
+
+You're one of our early users, so the full Second Opinion Report is free while I'm improving Mike with real homeowner feedback. It will give you a structured review of the pricing, equipment, scope, warranties, missing items, and questions to ask. Want me to generate it?"
+
+Nothing else should appear before the offer - no clarifying questions, no fairness judgment, no price verdict, no scope evaluation, no assumptions, no missing-item analysis, no risks, no negotiation advice, no contractor questions, no recommendation.
 
 ## How to re-run
 
