@@ -52,6 +52,7 @@ A prompt change could fix one and quietly break the other. Both need checking, e
 | 1 | Houston Pricing | `tests/houston-pricing.md` | Confident, unsupported pricing verdicts | Loss of trust from incorrect financial guidance | Recommended | PASS (2026-07-27) |
 | 2 | Learn Mode | `tests/learn-mode.md` | Rejecting educational/pre-decision users | Loss of future customers at the top of the funnel | Recommended | Fix deployed, awaiting re-test confirmation |
 | 3 | Large-Home Local Pricing | `tests/large-home-pricing.md` | Ungrounded local ranges + missed implicit signals (multiple systems) + internal-status exposure | Compounds trust loss (wrong assumptions) with credibility loss (self-contradiction, sounding unfinished) | **Yes - blocking** | Fix deployed, awaiting re-test confirmation |
+| 4 | High-Information Quote Flow | `tests/high-info-quote-flow.md` | Full personalized analysis given away in chat, report never offered, nothing captured | Core product delivered free with zero capture - worse than a wrong answer, since it happens in the highest-value conversations every time | **Yes - blocking** | Fix deployed, awaiting re-test confirmation |
 
 Tests marked release-blocking must pass before any system-prompt-touching deploy, not just changes to the specific area they test - test #3 covers two behavior categories at once (expert reasoning + confidence discipline), so it's a good general-purpose canary for prompt regressions even in unrelated areas.
 
