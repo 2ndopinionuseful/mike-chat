@@ -1,11 +1,12 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import { upload } from "@vercel/blob/client";
 import FeedbackWidget from "./components/FeedbackWidget";
 
 type MessageContent =
   | { type: "text"; text: string }
-  | { type: "image"; url: string; mediaType: string; data: string }
-  | { type: "pdf"; url: string; mediaType: string; data: string };
+  | { type: "image"; url: string }
+  | { type: "pdf"; url: string };
 
 type Message = {
   role: "user" | "assistant";
@@ -128,7 +129,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [loadingReport, setLoadingReport] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [pendingImage, setPendingImage] = useState<{data: string; mediaType: string; url: string; isPdf?: boolean} | null>(null);
+  const [pendingImage, setPendingImage] = useState<{blobUrl: string; previewUrl: string; isPdf?: boolean} | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [sessionId, setSessionId] = useState<string>("");
   const [restored, setRestored] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
@@ -217,7 +219,7 @@ export default function Home() {
     }
   }, [restored]);
 
-  const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.type === "application/msword" || file.name.endsWith(".docx") || file.name.endsWith(".doc")) {
@@ -231,15 +233,25 @@ export default function Home() {
       e.target.value = "";
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const data = result.split(",")[1];
-      const mediaType = file.type;
-      const url = URL.createObjectURL(file);
-      setPendingImage({ data, mediaType, url, isPdf });
-    };
-    reader.readAsDataURL(file);
+
+    const previewUrl = URL.createObjectURL(file);
+    setUploading(true);
+    try {
+      // Uploads directly from the browser to Vercel Blob storage - the file
+      // never passes through our own API route, which is what avoids
+      // Vercel's hard 4.5MB serverless function body limit entirely.
+      const newBlob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/upload",
+      });
+      setPendingImage({ blobUrl: newBlob.url, previewUrl, isPdf });
+    } catch (err) {
+      console.error("Blob upload failed:", err);
+      alert("Upload failed - try again, or paste the quote text directly instead.");
+      URL.revokeObjectURL(previewUrl);
+    } finally {
+      setUploading(false);
+    }
     e.target.value = "";
   };
 
@@ -252,6 +264,7 @@ export default function Home() {
       setMessages([INITIAL_MESSAGE]);
       setInput("");
       setPendingImage(null);
+      setUploading(false);
       if (inputRef.current) {
         inputRef.current.style.height = "auto";
       }
@@ -265,11 +278,11 @@ export default function Home() {
     if (pendingImage) {
       apiContent = [
         pendingImage.isPdf
-          ? { type: "pdf", url: pendingImage.url, mediaType: pendingImage.mediaType, data: pendingImage.data }
-          : { type: "image", url: pendingImage.url, mediaType: pendingImage.mediaType, data: pendingImage.data },
+          ? { type: "pdf", url: pendingImage.blobUrl }
+          : { type: "image", url: pendingImage.blobUrl },
         ...(input.trim() ? [{ type: "text" as const, text: input.trim() }] : [{ type: "text" as const, text: "Here is my HVAC quote. What do you think?" }])
       ];
-      userMessage = { role: "user", content: apiContent, displayImage: pendingImage.isPdf ? undefined : pendingImage.url };
+      userMessage = { role: "user", content: apiContent, displayImage: pendingImage.isPdf ? undefined : pendingImage.previewUrl };
     } else {
       userMessage = { role: "user", content: input.trim() };
       apiContent = [{ type: "text", text: input.trim() }];
@@ -292,8 +305,8 @@ export default function Home() {
         role: m.role,
         content: m.content.map((c: MessageContent) => {
           if (c.type === "text") return { type: "text", text: c.text };
-          if (c.type === "image") return { type: "image", source: { type: "base64", media_type: c.mediaType, data: c.data } };
-          if (c.type === "pdf") return { type: "document", source: { type: "base64", media_type: "application/pdf", data: c.data } };
+          if (c.type === "image") return { type: "image", source: { type: "url", url: c.url } };
+          if (c.type === "pdf") return { type: "document", source: { type: "url", url: c.url } };
           return c;
         })
       };
@@ -497,14 +510,21 @@ export default function Home() {
           </div>
         )}
 
-        {pendingImage && (
+        {uploading && (
+          <div style={{padding:"8px 14px",borderTop:"1px solid #1e1e1e",display:"flex",alignItems:"center",gap:"8px"}}>
+            <div style={{width:"16px",height:"16px",border:"2px solid #333",borderTopColor:"#c8a96e",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+            <span style={{color:"#888",fontSize:"12px"}}>Uploading...</span>
+          </div>
+        )}
+
+        {pendingImage && !uploading && (
           <div style={{padding:"8px 14px",borderTop:"1px solid #1e1e1e",display:"flex",alignItems:"center",gap:"8px"}}>
             {pendingImage.isPdf
               ? <div style={{height:"48px",width:"48px",borderRadius:"6px",border:"1px solid #333",background:"#2a1a1a",display:"flex",alignItems:"center",justifyContent:"center",color:"#c8a96e",fontSize:"11px",fontWeight:"700",flexShrink:0}}>PDF</div>
-              : <img src={pendingImage.url} alt="preview" style={{height:"48px",borderRadius:"6px",border:"1px solid #333"}}/>
+              : <img src={pendingImage.previewUrl} alt="preview" style={{height:"48px",borderRadius:"6px",border:"1px solid #333"}}/>
             }
             <span style={{color:"#888",fontSize:"12px",flex:1}}>{pendingImage.isPdf ? "PDF ready to send" : "Quote photo ready to send"}</span>
-            <button onClick={()=>setPendingImage(null)} style={{background:"none",border:"none",color:"#666",cursor:"pointer",fontSize:"16px"}}>x</button>
+            <button onClick={()=>{URL.revokeObjectURL(pendingImage.previewUrl); setPendingImage(null);}} style={{background:"none",border:"none",color:"#666",cursor:"pointer",fontSize:"16px"}}>x</button>
           </div>
         )}
 
@@ -525,8 +545,8 @@ export default function Home() {
             placeholder={pendingImage ? "Add a note or just hit send..." : "Reply..."}
             rows={1} disabled={loading}
             style={{flex:1,background:"#1d1d1d",border:"1px solid #262626",borderRadius:"11px",color:"#ccc",padding:"10px 12px",fontSize:"14px",fontFamily:"Georgia,serif",resize:"none" as const,outline:"none",lineHeight:"1.5",maxHeight:"160px",overflowY:"auto" as const}}/>
-          <button onClick={send} disabled={(!input.trim()&&!pendingImage)||loading}
-            style={{width:"39px",height:"39px",borderRadius:"50%",background:"#c8a96e",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:(input.trim()||pendingImage)&&!loading?1:0.35}}>
+          <button onClick={send} disabled={(!input.trim()&&!pendingImage)||loading||uploading}
+            style={{width:"39px",height:"39px",borderRadius:"50%",background:"#c8a96e",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:(input.trim()||pendingImage)&&!loading&&!uploading?1:0.35}}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M22 2L11 13" stroke="#111" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
               <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="#111" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -538,7 +558,7 @@ export default function Home() {
           HVAC only - No contractor ties - Your call
         </div>
       </div>
-      <style>{`@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-4px)}} @media (min-width: 600px) { .chat-root .msg-bubble { font-size: 15px !important; } .chat-root textarea { font-size: 15px !important; } }`}</style>
+      <style>{`@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-4px)}} @keyframes spin{to{transform:rotate(360deg)}} @media (min-width: 600px) { .chat-root .msg-bubble { font-size: 15px !important; } .chat-root textarea { font-size: 15px !important; } }`}</style>
     </div>
   );
 }
