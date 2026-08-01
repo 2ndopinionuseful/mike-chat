@@ -201,6 +201,7 @@ export default function Home() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-session-id": sessionId,
           ...(isTestMode ? { "x-test-mode": "true" } : {}),
         },
         body: JSON.stringify({ messages: apiMessages }),
@@ -316,6 +317,7 @@ export default function Home() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-session-id": sessionId,
           ...(isTestMode ? { "x-test-mode": "true" } : {}),
         },
         body: JSON.stringify({ messages: apiMessages }),
