@@ -895,7 +895,7 @@ export async function POST(req: NextRequest) {
     let systemPrompt = SYSTEM_PROMPT;
 
     if (safetyResolutionType === "self_report") {
-      systemPrompt = SYSTEM_PROMPT + "\n\nSAFETY RESOLUTION CONTEXT (this turn only): The user just indicated the earlier Tier 1 hazard is resolved, but based on THEIR OWN assessment - no gas utility, fire department, electrician, or other professional was mentioned as having confirmed it. Trust their word and resume the earlier HVAC conversation immediately, per RESUMING AFTER A TIER 1 HAZARD IS RESOLVED - do not block them or demand professional confirmation. But add ONE brief, non-alarming safety note woven naturally into your reply: for a gas or CO situation specifically, getting confirmation from the gas utility, fire department, or a qualified technician is worth doing when possible, even though you're moving forward with them now. Keep this to one sentence, not a repeated warning - say it once here and don't bring it up again.";
+      systemPrompt = SYSTEM_PROMPT + "\n\nSAFETY RESOLUTION CONTEXT (this turn only): The user just indicated the earlier Tier 1 hazard is resolved, but based on THEIR OWN assessment - no professional authority was mentioned as having confirmed it. Trust their word and resume the earlier HVAC conversation immediately, per RESUMING AFTER A TIER 1 HAZARD IS RESOLVED - do not block them or demand professional confirmation, and do not add your own safety caveat about this - that's handled separately. Just acknowledge briefly and move straight into the resumed conversation.";
     } else if (safetyResolutionType === "authority") {
       systemPrompt = SYSTEM_PROMPT + "\n\nSAFETY RESOLUTION CONTEXT (this turn only): The user just confirmed the earlier Tier 1 hazard was resolved by an actual professional authority (gas utility, fire department, electrician, or similar). Resume the earlier HVAC conversation immediately per RESUMING AFTER A TIER 1 HAZARD IS RESOLVED - acknowledge with relief, no extra safety caveat needed here, that part is genuinely handled.";
     }
@@ -986,7 +986,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unexpected response" }, { status: 500 });
     }
 
-    const replyText = reply.text;
+    let replyText = reply.text;
+
+    // Deterministic append, not a prompt request - the caveat sentence is
+    // guaranteed present on self-report safety resolutions because the code
+    // adds it directly, rather than asking the model to remember to include
+    // it. Prompt-only compliance for this exact caveat failed twice in
+    // testing (present in the instruction, absent from the actual
+    // response), which is why this moved to the same "code guarantees it,
+    // not the model" pattern already used for the report offer text. This
+    // does NOT change or block anything else the model said - it only adds
+    // one sentence after whatever Mike already wrote, which still proceeds
+    // with the resumed HVAC conversation normally (Mike's job is to flag
+    // the safety point once and move on, not to gate the conversation on it).
+    if (safetyResolutionType === "self_report") {
+      replyText = replyText.trim() + "\n\nWorth getting confirmation from the gas utility, fire department, or a qualified technician when you can, just to be sure.";
+    }
 
     // Detect whether Mike actually wrote a full report. We check for the SITUATION SUMMARY
     // header plus a "Your revision code:" line - we do NOT require the literal [REVISION_CODE]
