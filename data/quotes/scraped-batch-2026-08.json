@@ -1,0 +1,523 @@
+{
+  "batch_metadata": {
+    "date_collected": "2026-08-02",
+    "source": "user-collected screenshots/PDFs, mixed origin (Reddit and other)",
+    "confidence_note": "Only record 9 (Chino Heating and Cooling) has a named contractor and dated quote. All others are anonymous screenshots with no confirmed location or date — treat as directional/pattern evidence, not location-grounded pricing comps. Do not use these to answer a user's 'is my quote fair for my area' question without a location match.",
+    "record_count": 11
+  },
+  "records": [
+    {
+      "id": "batch2026-08-01",
+      "type": "replacement_quote",
+      "tier_label": "Basic Comfort (Bronze)",
+      "tier_group": "batch2026-08-01_02",
+      "contractor": null,
+      "location": null,
+      "quote_date": null,
+      "estimate_number": "63537863",
+      "equipment": {
+        "condenser": "2 Ton 14.5 SEER Goodman A/C, R-32 refrigerant",
+        "furnace": "96% AFUE LP gas furnace",
+        "thermostat": "Digital thermostat",
+        "fuel_type": "LP (propane)"
+      },
+      "scope": [
+        "Cap off return drop, add return in living room floor",
+        "Run PVC exhaust vent pipe for higher efficiency / LP cost savings",
+        "Replace copper refrigerant lines to meet manufacturer spec",
+        "Install 14\" return",
+        "Replace exhaust vent",
+        "Install 3/4 lineset"
+      ],
+      "warranty": {
+        "parts_years": 10,
+        "labor_years": 1,
+        "condition": "10yr parts requires online registration within 30 days of install or reverts to 5yr; original homeowner only"
+      },
+      "pricing": {
+        "line_items": {
+          "system": 9612,
+          "install_14in_return": 490,
+          "exhaust_vent": 250,
+          "lineset_3_4": 750,
+          "promo_discount": -1500
+        },
+        "subtotal": 9602,
+        "tax": 0,
+        "total": 9602,
+        "financing_as_low_as_monthly": 122
+      },
+      "confidence": "low - no location/date/contractor",
+      "notes": "Paired with batch2026-08-02 (same job, higher tier) - useful as a same-contractor tier-comparison pair"
+    },
+    {
+      "id": "batch2026-08-02",
+      "type": "replacement_quote",
+      "tier_label": "Enhanced Comfort (Gold)",
+      "tier_group": "batch2026-08-01_02",
+      "contractor": null,
+      "location": null,
+      "quote_date": null,
+      "estimate_number": "63537955",
+      "equipment": {
+        "condenser": "2 Ton 15.2 SEER Trane A/C, R-454 refrigerant",
+        "furnace": "95% AFUE LP gas furnace",
+        "thermostat": "Digital thermostat",
+        "fuel_type": "LP (propane)"
+      },
+      "scope": [
+        "Cap off return drop, add return in living room floor",
+        "Run PVC exhaust vent pipe for higher efficiency / LP cost savings",
+        "Replace copper refrigerant lines to meet manufacturer spec",
+        "Install 14\" return",
+        "Replace exhaust vent",
+        "Install 3/4 lineset"
+      ],
+      "warranty": {
+        "parts_years": 10,
+        "labor_years": 1,
+        "condition": "10yr parts requires online registration within 30 days of install or reverts to 5yr; original homeowner only"
+      },
+      "pricing": {
+        "line_items": {
+          "system": 11208,
+          "install_14in_return": 490,
+          "exhaust_vent": 250,
+          "lineset_3_4": 750,
+          "promo_discount": -1500
+        },
+        "subtotal": 11198,
+        "tax": 0,
+        "total": 11198,
+        "financing_as_low_as_monthly": 142
+      },
+      "confidence": "low - no location/date/contractor",
+      "notes": "Same contractor/scope as batch2026-08-01, better tier. Delta between Basic and Enhanced tiers: $1,596 for a 0.7 SEER bump and higher-tier brand (Goodman -> Trane)."
+    },
+    {
+      "id": "batch2026-08-03",
+      "type": "replacement_quote_multi_tier",
+      "tier_label": "Better",
+      "tier_group": "batch2026-08-03_04",
+      "contractor": null,
+      "location": null,
+      "quote_date": null,
+      "equipment": {
+        "heat_pump": "Rheem Endeavor Classic Plus 2.5 Ton 2-stage heat pump, model RP15AY30AJ2NA, R-454B",
+        "furnace": "Rheem 801V Classic Series 75,000 BTU variable speed single-stage gas furnace, model R801V0754A17UHSCAP",
+        "coil": "Matching coil",
+        "thermostat": "Ecobee Pro (remote access via app, Alexa voice control)",
+        "water_heater": "BW 50 gallon gas water heater (6yr tank)",
+        "air_cleaner": "Aprilaire media air cleaner, model R2410",
+        "humidifier": "Aprilaire 600 manual humidifier",
+        "ahri_number": "215654878",
+        "seer2": 15.2,
+        "eer2": 11.7,
+        "hspf2": 7.5,
+        "afue": 80
+      },
+      "pricing": {
+        "price_before_discounts": 25048,
+        "manufacturer_rebate": -600,
+        "seasonal_discount": -2445,
+        "special_promo_discount": -2200,
+        "utility_rebate_empower_md_pepco": -2000,
+        "total_due_on_completion": 17803
+      },
+      "confidence": "low - no location/date/contractor",
+      "notes": "Bundled quote - includes water heater, air cleaner, and humidifier alongside HVAC, NOT apples-to-apples with pure HVAC-only quotes in this batch. 'Empower MD Pepco' utility rebate suggests Maryland/DC Pepco service territory - useful geographic hint even without explicit location field."
+    },
+    {
+      "id": "batch2026-08-04",
+      "type": "replacement_quote_multi_tier",
+      "tier_label": "Best",
+      "tier_group": "batch2026-08-03_04",
+      "contractor": null,
+      "location": null,
+      "quote_date": null,
+      "equipment": {
+        "heat_pump": "Carrier Comfort 2.5 Ton single-stage compressor heat pump, model 27SCA530, R-454B",
+        "furnace": "Carrier Comfort 80, 70,000 BTU multispeed furnace, model 58SB0B070M21-16",
+        "coil": "Matching coil",
+        "thermostat": "Ecobee Pro (remote access via app, Alexa voice control)",
+        "water_heater": "BW 50 gallon gas water heater (6yr tank)",
+        "air_cleaner": "Aprilaire media air cleaner, model R2410",
+        "humidifier": "Aprilaire 600 manual humidifier",
+        "ahri_number": "214134297",
+        "seer2": 15.2,
+        "eer2": 11.5,
+        "hspf2": 7.5,
+        "afue": 80
+      },
+      "pricing": {
+        "price_before_discounts": 24559,
+        "manufacturer_rebate": -300,
+        "seasonal_discount": -2426,
+        "special_promo_discount": -2183,
+        "utility_rebate_empower_md_pepco": -2000,
+        "total_due_on_completion": 17650
+      },
+      "confidence": "low - no location/date/contractor",
+      "notes": "Same bundle structure as batch2026-08-03. Notably the 'Best' tier here is CHEAPER than 'Better' ($17,650 vs $17,803) despite being labeled higher - the brand (Carrier vs Rheem) is the differentiator, not spec superiority, since SEER2/AFUE are nearly identical. Good example of tier-label != strict price/quality ordering, worth flagging to users who assume 'Best' always costs the most."
+    },
+    {
+      "id": "batch2026-08-05",
+      "type": "replacement_quote_multi_tier",
+      "tier_label": "Budget",
+      "tier_group": "batch2026-08-05_06_07_08",
+      "contractor": null,
+      "location": null,
+      "quote_date": null,
+      "equipment": {
+        "condenser": "Tempstar N5A4S60AKANA, Performance Series, single-stage AC",
+        "coil": "Tempstar EVD5X60M24A evaporator coil",
+        "furnace": "Tempstar N96MSN1202422A, up to 97% AFUE single-stage condensing gas furnace",
+        "seer2": 13.4,
+        "eer2": 11.5
+      },
+      "warranty": {
+        "ac_parts_years": "5 (10yr with timely registration within 90 days)",
+        "furnace_parts_years": 10,
+        "heat_exchanger_years": 20
+      },
+      "pricing": {
+        "sticker_total": 17941,
+        "monthly_payment": 268,
+        "incentives": {
+          "centerpoint_97pct_efficiency_rebate": -1000,
+          "xcel_13_4_seer2_rebate": -150
+        },
+        "net_investment": 16791,
+        "financing_apr": 12.99,
+        "financing_term_months": 120
+      },
+      "confidence": "low - no location/date/contractor",
+      "notes": "Utility names (Centerpoint, Xcel) suggest Texas or Minnesota/Colorado service territory. Part of a 4-tier good/better/best/budget spread from the same quote (see 06/07/08) with a ~$20K spread between cheapest and most expensive tier."
+    },
+    {
+      "id": "batch2026-08-06",
+      "type": "replacement_quote_multi_tier",
+      "tier_label": "Good",
+      "tier_group": "batch2026-08-05_06_07_08",
+      "contractor": null,
+      "location": null,
+      "quote_date": null,
+      "equipment": {
+        "condenser": "Tempstar N5A5S60AKAWA, Performance Series, single-stage AC",
+        "coil": "Tempstar EVD5X60M24A evaporator coil",
+        "furnace": "Tempstar F97VTN1202422A, QuietComfort Series, two-stage gas furnace"
+      },
+      "warranty": {
+        "ac_parts_years": 10,
+        "furnace_replacement_years": "5 no hassle",
+        "heat_exchanger_years": "10 parts + lifetime limited (with timely registration)"
+      },
+      "pricing": {
+        "sticker_total": 18343,
+        "monthly_payment": 274,
+        "incentives": {
+          "centerpoint_97pct_efficiency_rebate": -1000,
+          "xcel_13_4_seer2_rebate": -150
+        },
+        "net_investment": 17193,
+        "financing_apr": 12.99,
+        "financing_term_months": 120
+      },
+      "confidence": "low - no location/date/contractor",
+      "notes": "Only $402 more sticker price than Budget tier for a two-stage furnace upgrade vs single-stage - small delta for a meaningful comfort/efficiency step."
+    },
+    {
+      "id": "batch2026-08-07",
+      "type": "replacement_quote_multi_tier",
+      "tier_label": "Better",
+      "tier_group": "batch2026-08-05_06_07_08",
+      "contractor": null,
+      "location": null,
+      "quote_date": null,
+      "equipment": {
+        "condenser": "Tempstar TVA960GKA, Deluxe 19 High Efficiency, variable speed AC",
+        "coil": "Tempstar EVD4X61M24A, Performance Cased V, Power-V Technology",
+        "furnace": "Tempstar F97CMN1202422B, up to 98% AFUE communicating modulating gas furnace, variable speed",
+        "controls": "Tempstar SYST0101CW Ion system control, WiFi capable"
+      },
+      "warranty": {
+        "ac_parts_years": "10 (no hassle replacement 10yr, registered within 90 days)",
+        "furnace_parts_years": "10 (incl. compressor/coils, timely registration), lifetime heat exchanger"
+      },
+      "pricing": {
+        "sticker_total": 23424,
+        "monthly_payment": 350,
+        "incentives": {
+          "centerpoint_97pct_efficiency_rebate": -1000
+        },
+        "net_investment": 22424,
+        "financing_apr": 12.99,
+        "financing_term_months": 120
+      },
+      "confidence": "low - no location/date/contractor",
+      "notes": "Jump from Good ($18,343) to Better ($23,424) is $5,081 - the biggest tier-to-tier jump in this spread, driven by variable-speed equipment and losing the Xcel rebate (AC is no longer heat pump-eligible for that specific rebate at this tier config)."
+    },
+    {
+      "id": "batch2026-08-08",
+      "type": "replacement_quote_multi_tier",
+      "tier_label": "Best",
+      "tier_group": "batch2026-08-05_06_07_08",
+      "contractor": null,
+      "location": null,
+      "quote_date": null,
+      "equipment": {
+        "heat_pump": "Tempstar T5H3V60AKAAA, Ion Series, variable-speed heat pump",
+        "coil": "Tempstar EAM5X60M24A evaporator coil",
+        "furnace": "Tempstar F97CMN1202422B, up to 98% AFUE communicating modulating gas furnace, variable speed",
+        "controls": "Tempstar SYST0101CW Ion + Carrier SYSTXZNSMS01 Infinity Control user interface",
+        "seer2": 18.5,
+        "ahri_number": "215931633"
+      },
+      "warranty": {
+        "heat_pump_years": "10 (no hassle replacement 10yr + 10yr parts)",
+        "furnace_years": "10 parts (incl. compressor/coils, timely registration), lifetime heat exchanger"
+      },
+      "pricing": {
+        "sticker_total": 37172,
+        "monthly_payment": 555,
+        "incentives": {
+          "centerpoint_97pct_efficiency_rebate": -1000,
+          "xcel_15_2_seer2_heat_pump_rebate": -500
+        },
+        "net_investment": 35672,
+        "financing_apr": 12.99,
+        "financing_term_months": 120
+      },
+      "confidence": "low - no location/date/contractor",
+      "notes": "This tier swaps the AC for a full heat pump (fuel-switching upsell) at nearly double the Better tier's price. 12.99% APR / 120mo financing applies uniformly across all 4 tiers in this quote - worth using as a benchmark data point for 'is this financing rate normal' questions."
+    },
+    {
+      "id": "batch2026-08-09",
+      "type": "itemized_equipment_quote",
+      "contractor": "Rocket Air & Heat (name partially obscured in source: '^_Rocket^_ Air ^_He...')",
+      "location": null,
+      "quote_date": null,
+      "equipment": {
+        "outdoor_unit": "Goodman GZV7SA3610A - Enhanced high-efficiency, communicating, variable-speed, inverter-driven side-discharge split heat pump, R-32 refrigerant, SEER2 19",
+        "indoor_unit": "Goodman AHVE42CP0300A - 115V multi-position variable speed EMC-based air handler, 53-7/16 x 21 x 21 in",
+        "thermostat": "Daikin One Touch"
+      },
+      "warranty": {
+        "compressor": "Lifetime (with registration)",
+        "unit_replacement_years": 10,
+        "parts_years": 10
+      },
+      "pricing": {
+        "line_items": {
+          "surge_protector": 485,
+          "outdoor_unit": 6626,
+          "indoor_unit": 4500,
+          "installation_materials": 800,
+          "daikin_thermostat": 750
+        },
+        "note": "Line-item total not fully visible in source (receipt cut off before full subtotal); partial total visible from listed items exceeds $13,161"
+      },
+      "confidence": "medium - contractor name partially visible, no location/date, but pricing is itemized/unbundled which is unusually granular",
+      "notes": "Most useful record in the batch for line-item cost benchmarking - this is one of the few quotes that separates equipment cost per component (outdoor unit, indoor unit, thermostat, materials) rather than bundling into a single system price. Good reference point for 'is $X reasonable for just the equipment' questions."
+    },
+    {
+      "id": "batch2026-08-10",
+      "type": "repair_estimate",
+      "contractor": null,
+      "location": null,
+      "quote_date": null,
+      "diagnosis": {
+        "complaint": "AC not keeping up with outdoor temps, home progressively warming over several days, system unable to reach thermostat setpoint",
+        "findings": [
+          "Evaporator coil (replaced 2021) in good condition, no rust/corrosion",
+          "Evaporator cabinet sweating excessively - indicates system not operating under normal conditions",
+          "Blower motor and air filter operating properly, no concerns",
+          "No evidence of coil freeze-over during inspection",
+          "Condenser coil cleaned prior to testing",
+          "Refrigerant pressure readings indicate restriction within the line set, causing excess compressor strain, risk of premature compressor failure if uncorrected"
+        ]
+      },
+      "recommended_repair": {
+        "scope": [
+          "Replace thermostatic expansion valve (TXV)",
+          "Replace filter drier",
+          "Full refrigerant recovery",
+          "Nitrogen flush and cleanout of line set to remove contamination/restriction",
+          "Evacuate system",
+          "Recharge with proper refrigerant amount"
+        ],
+        "warranty": "1-year workmanship guarantee",
+        "timeline": "1 day",
+        "financing_available": true
+      },
+      "pricing": {
+        "total": 3471,
+        "note": "All-inclusive: labor, materials, refrigerant, disposal"
+      },
+      "confidence": "low - no location/date/contractor, but diagnostic narrative is detailed and internally consistent",
+      "notes": "Strong repair-path example with a clear diagnostic chain (symptom -> inspection -> finding -> root cause -> fix). Useful reference for what a well-documented repair estimate should look like, and for repair-vs-replace cost anchoring ($3,471 repair vs $8,000-11,000+ replacement quotes elsewhere in this batch)."
+    },
+    {
+      "id": "batch2026-08-11",
+      "type": "replacement_quote",
+      "tier_label": "2 Ton Basic System Package",
+      "contractor": null,
+      "location": null,
+      "quote_date": null,
+      "estimate_number": "279029856",
+      "equipment": {
+        "condenser": "Single-stage condenser",
+        "furnace": "Single-stage standard efficiency gas furnace",
+        "coil": "Matched indoor coil",
+        "thermostat": "Digital thermostat"
+      },
+      "warranty": {
+        "labor_years": "2 (exclusive to this contractor)",
+        "no_lemon_years": 5,
+        "parts_years": 10,
+        "compressor_years": 10,
+        "heat_exchanger": "Lifetime (manufacturer)"
+      },
+      "soft_guarantees": [
+        "Peace of Mind Guarantee - background-checked and randomly drug-tested technicians",
+        "Property Protection Guarantee - protects shrubs, lawns, carpeting, floors, walls, furniture, door frames; shoe covers and hall runners used; liability and workmen's comp insurance carried"
+      ],
+      "pricing": {
+        "total": 8200
+      },
+      "confidence": "low - no location/date/contractor",
+      "notes": "Lowest sticker price in the batch for a full replacement, but single-stage/standard-efficiency equipment throughout. Heavy emphasis on trust/guarantee marketing language rather than equipment specs - useful example of how contractors sell on service assurances when equipment tier is basic."
+    },
+    {
+      "id": "batch2026-08-12",
+      "type": "repair_estimate",
+      "contractor": null,
+      "location": null,
+      "quote_date": null,
+      "service_number": "5026",
+      "scope": {
+        "description": "Provide and install compressor, 1.5-5 ton, with TXV",
+        "included": [
+          "Recovery of existing refrigerant",
+          "Test existing refrigerant for acid",
+          "Replace existing compressor",
+          "Replace compressor terminal kit if needed",
+          "Replace capacitor if needed",
+          "Replace contactor if needed",
+          "Replace filter drier if needed",
+          "Nitrogen test welds (does not include repair to other parts of system outside scope)",
+          "Vacuum system to 500 microns",
+          "Recharge",
+          "Test"
+        ]
+      },
+      "pricing": {
+        "subtotal": 4584.36,
+        "tax": 0,
+        "total": 4584.36
+      },
+      "confidence": "low - no location/date/contractor",
+      "notes": "Compressor-specific repair pricing benchmark - useful comparison point against batch2026-08-13's compressor repair ($5,040.55 all-in) for cross-checking typical compressor R&R cost range."
+    },
+    {
+      "id": "batch2026-08-13",
+      "type": "replacement_quote",
+      "contractor": "Chino Heating and Cooling",
+      "location": null,
+      "quote_date": "2026-07-24",
+      "quote_expiration_date": "2026-08-23",
+      "sales_rep": "Devin L.",
+      "equipment": {
+        "furnace": "Ruud 75,000 BTU, 80% AFUE, horizontal gas furnace, model R801T0754A17UHNN",
+        "coil": "RCFY3617STANMC",
+        "condenser": "Ruud 3 ton 13.8 SEER2 AC, model RA14AY36AJ1NA, R-454A",
+        "thermostat": "TH232OU4006",
+        "fuel_type": "Natural gas"
+      },
+      "scope": [
+        "Remove existing furnace and coil in attic and condenser at exterior",
+        "Install new furnace/coil/condenser in place, reconnect to existing ductwork, gas, electric, condensate, lineset, and flue pipe with new return air plenum",
+        "Enlarge return air (existing not sized for R454A CFM requirements - system will ice over if not addressed)",
+        "Install extension and new electrical disconnect, mounted next to condenser to meet local code",
+        "Re-hang system using Unistrut and all-thread to meet local code (currently hung with metal drives, out of code)",
+        "Existing thermostat to remain and be reused"
+      ],
+      "options_not_included_in_base_price": {
+        "duct_cleaning_roto_brush": 410,
+        "anti_microbial_fog_treatment": 50,
+        "dryer_vent_cleaning": 200
+      },
+      "warranty": {
+        "parts_years": 10,
+        "labor_years": 2
+      },
+      "terms": [
+        "All labor per current code",
+        "Permits paid by owner as extra",
+        "Equipment models may vary, subject to availability",
+        "Payment schedule: 50% due on acceptance, 50% due on completion"
+      ],
+      "pricing": {
+        "subtotal": 9199.15,
+        "tax": 0,
+        "total": 9199.15
+      },
+      "confidence": "high - only record in batch with named contractor and confirmed quote date",
+      "notes": "Most traceable/usable record in this batch for future location-grounding if the property location can be confirmed. Flags an important technical detail worth teaching Mike to watch for: undersized return air relative to new refrigerant type CFM requirements causing coil icing - this is a legitimate scope item, not upselling, and a good example of a contractor explaining WHY extra work is needed rather than just listing it."
+    },
+    {
+      "id": "batch2026-08-14",
+      "type": "replacement_quote",
+      "contractor": null,
+      "location": null,
+      "quote_date": null,
+      "equipment": {
+        "condenser_and_furnace": "Goodman 2 ton split air conditioning system with gas furnace"
+      },
+      "scope": [
+        "New condenser pad",
+        "New condensate pump",
+        "New thermostat",
+        "New electrical disconnect for condenser",
+        "Flush refrigerant lines",
+        "Add flood protection safety switches",
+        "Add double wall pipe for exhaust coming off furnace"
+      ],
+      "warranty": {
+        "manufacturer_parts_years": 10,
+        "standard_labor_years": 1,
+        "members_labor_years": 2
+      },
+      "pricing": {
+        "total": 8950
+      },
+      "confidence": "low - no location/date/contractor; second page with SEER/AFUE specs not visible in source",
+      "notes": "Scope list includes good safety-conscious items (flood protection switches, double-wall exhaust pipe) at a mid-low price point - useful counter-example to the idea that safety features are only bundled into premium tiers."
+    },
+    {
+      "id": "batch2026-08-15",
+      "type": "repair_estimate",
+      "contractor": null,
+      "location": null,
+      "quote_date": null,
+      "diagnosis": "Grounded out compressor",
+      "line_items": {
+        "warranty_part_cost_to_contractor": {"amount": 199, "note": "Part itself is under manufacturer warranty; this is the contractor's cost to initiate the warranty process. Labor and misc items are billed separately and are NOT covered by the parts warranty."},
+        "compressor_labor": {"amount": 1850, "note": "Remove grounded compressor, install new compressor, weld-in, misc wire/ties/connections to sensors, prep for refrigerant"},
+        "biflow_filter_driers_x2": {"amount": 535, "note": "Installed on liquid line inside and outside unit, includes welding"},
+        "pressure_test_and_vacuum": {"amount": 495, "note": "Pressure test and hold per manufacturer spec, vacuum to under 500 microns"},
+        "refrigerant": {"amount": 1495, "note": "Based on tag weight plus extended amount for line length"},
+        "deposit_required": {"amount": 0, "note": "40% down required before contractor arrives with equipment; remainder due day of install"}
+      },
+      "pricing": {
+        "subtotal": 4574,
+        "tax_rate_pct": 10.2,
+        "tax": 466.55,
+        "total": 5040.55,
+        "currency": "USD"
+      },
+      "confidence": "low - no location/date/contractor, but the 10.2% tax rate is a usable signal",
+      "notes": "10.2% combined sales tax rate is unusually high and narrows down plausible jurisdictions (several WA state cities, parts of CA, and a few other high-tax metro areas land in this range) - flag as a soft geographic hint even without an explicit location field. Second compressor-repair benchmark alongside batch2026-08-12 ($4,584.36 vs $5,040.55 total) - useful range for compressor-replacement repair cost sanity-checking."
+    }
+  ]
+}
