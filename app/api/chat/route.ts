@@ -101,7 +101,7 @@ const SYSTEM_PROMPT = [
   "",
   "In Tier 2 situations, take ownership rather than putting the judgment call on the user. Not 'if your home isn't staying safe...' (which asks them to assess their own risk) but 'With 105°F temperatures and an elderly person in the house, I'd treat this as an emergency' (which makes the call for them, clearly). Removing that burden from someone who's already stressed is part of the job here.",
   "",
-  "RESUMING AFTER A TIER 1 HAZARD IS RESOLVED: if you're seeing this message, it means a Tier 1 hazard from earlier in this conversation has just been confirmed resolved by a real authority (the gas utility, fire department, electrician, or similar) - the application has already verified this before routing here. Briefly acknowledge the resolution with genuine relief - something like 'Good - I'm glad everyone's safe and the gas company got it handled' - then resume the earlier HVAC conversation naturally from wherever it was interrupted. Don't restart the conversation, don't re-ask things already answered before the interruption, and don't repeat safety instructions - that's over now. If they were discussing a quote or asking a question before the interruption, pick that thread back up in the same reply as the acknowledgment, not as a separate later step.",
+  "RESUMING AFTER A TIER 1 HAZARD IS RESOLVED: if you're seeing this message, it means a Tier 1 hazard from earlier in this conversation has just been resolved - either confirmed by a real authority, or by the user's own word that things are fine now. The application tells you which one via a SAFETY RESOLUTION CONTEXT note appended below (only present on the exact turn this applies to) - follow that note's specific instructions, since it determines whether a brief safety caveat is needed. In both cases: briefly acknowledge the resolution with genuine relief, then resume the earlier HVAC conversation naturally from wherever it was interrupted. Don't restart the conversation, don't re-ask things already answered before the interruption, and don't repeat the full evacuation instructions - that's over now. If they were discussing a quote or asking a question before the interruption, pick that thread back up in the same reply as the acknowledgment, not as a separate later step.",
   "",
   "EMPATHY AND URGENCY - THE EMERGENCY MODE IN PRACTICE",
   "",
@@ -514,7 +514,12 @@ function isVagueResolutionClaim(text: string): boolean {
   return /safe now|we'?re safe|everyone'?s (safe|out|okay|fine)|all clear|resolved|false alarm|handled( it)?|situation is over|fixed now|smell'?s? gone|no more smell|turned out to be nothing|back inside|we'?re (ok|okay|fine) now|i think (we'?re|it'?s) (fine|ok|okay)/.test(t);
 }
 
-const FIXED_SAFETY_CONFIRMATION_REQUEST = `Because this involved a possible gas, fire, or electrical hazard, I can only continue once a qualified responder - the gas utility, fire department, or an electrician - has confirmed the property is safe. Has someone confirmed that yet?`;
+// NOTE: an earlier version of this policy had a FIXED_SAFETY_CONFIRMATION_REQUEST
+// constant that blocked resumption until professional confirmation. That
+// was deliberately walked back - the current policy trusts the user's own
+// resolution claim and resumes immediately, adding only a brief caveat for
+// self-reported (non-authority-confirmed) resolutions. See
+// SAFETY RESOLUTION CONTEXT injection in the POST handler below.
 
 type SafetyState = "active" | "resolved";
 
@@ -823,16 +828,17 @@ export async function POST(req: NextRequest) {
     // Three-way branch on each turn while a Tier 1 hazard is in play:
     // (1) a NEW hazard just mentioned -> full safety response
     // (2) still active from an earlier turn, and the user's latest message
-    //     only contains a VAGUE self-assessment ("smell's gone", "we're
-    //     fine") with no professional authority mentioned -> do NOT clear
-    //     safety mode, ask a deterministic, fixed confirmation question
-    //     instead - self-assessment isn't sufficient for gas/CO/fire/
-    //     electrical specifically
-    // (3) still active, and the latest message references an actual
-    //     authority (gas company, fire department, electrician, etc.)
-    //     confirming clearance -> genuinely resolved, clear the state and
-    //     fall through to completely normal routing, which resumes the
-    //     interrupted HVAC conversation naturally
+    //     is a resolution claim - either authority-confirmed (gas company,
+    //     fire dept, electrician, etc.) or a vague self-report ("smell's
+    //     gone", "we're fine"). POLICY: both are trusted and resume the
+    //     conversation immediately - we do not block the user or demand
+    //     professional confirmation. The distinction only affects what the
+    //     model says on the resuming turn: a vague self-report gets one
+    //     brief safety caveat about gas/CO specifically (professional
+    //     confirmation is worth getting when possible), an authority-
+    //     confirmed resolution does not need that caveat.
+    // (3) neither - either a new hazard, or safety mode continues because
+    //     nothing resolution-shaped was said.
     //
     // Must win even when the same message also contains a quote amount,
     // contractor details, replacement intent, report intent, urgency
@@ -842,22 +848,20 @@ export async function POST(req: NextRequest) {
     const lastUserTextForSafety = lastUserMsgForSafety ? flattenForExtraction(lastUserMsgForSafety.content) : "";
 
     const isNewHazard = hasImmediateSafetyHazard(messages);
+    let safetyResolutionType: "authority" | "self_report" | null = null;
 
-    if (existingSafetyState === "active" && isAuthorityConfirmedResolution(lastUserTextForSafety)) {
-      // Genuinely resolved - clear state, fall through to normal routing.
-      // The full system prompt handles acknowledging relief and resuming
-      // the interrupted conversation naturally (see the resumption note in
-      // TIER 1's prompt section) - nothing special needs to happen here
-      // beyond clearing the flag.
+    if (existingSafetyState === "active" && !isNewHazard && isAuthorityConfirmedResolution(lastUserTextForSafety)) {
       await setSafetyState(sessionId, "resolved");
+      safetyResolutionType = "authority";
       console.log(JSON.stringify({ event: "tier1_safety_resolved_by_authority", sessionId, timestamp }));
-    } else if (existingSafetyState === "active" && isVagueResolutionClaim(lastUserTextForSafety) && !isNewHazard) {
-      // Vague self-assessment, no authority mentioned - stay in safety mode
-      // but don't repeat full evacuation instructions. Fixed, deterministic
-      // response for the same reliability reasons as everything else safety
-      // related in this file - no model call, no room for drift.
-      console.log(JSON.stringify({ event: "tier1_vague_resolution_claim_rejected", sessionId, timestamp }));
-      return NextResponse.json({ reply: FIXED_SAFETY_CONFIRMATION_REQUEST, sessionId });
+    } else if (existingSafetyState === "active" && !isNewHazard && isVagueResolutionClaim(lastUserTextForSafety)) {
+      // Policy change: trust the user's self-report rather than blocking on
+      // professional confirmation - resume immediately, but flag this as a
+      // self-report resolution so the model adds a brief gas/CO caveat
+      // instead of treating it identically to an authority-confirmed one.
+      await setSafetyState(sessionId, "resolved");
+      safetyResolutionType = "self_report";
+      console.log(JSON.stringify({ event: "tier1_safety_resolved_by_self_report", sessionId, timestamp }));
     } else if (isNewHazard || existingSafetyState === "active") {
       await setSafetyState(sessionId, "active");
       console.log(JSON.stringify({
@@ -889,6 +893,12 @@ export async function POST(req: NextRequest) {
     // all - proceed to completely normal routing below.
 
     let systemPrompt = SYSTEM_PROMPT;
+
+    if (safetyResolutionType === "self_report") {
+      systemPrompt = SYSTEM_PROMPT + "\n\nSAFETY RESOLUTION CONTEXT (this turn only): The user just indicated the earlier Tier 1 hazard is resolved, but based on THEIR OWN assessment - no gas utility, fire department, electrician, or other professional was mentioned as having confirmed it. Trust their word and resume the earlier HVAC conversation immediately, per RESUMING AFTER A TIER 1 HAZARD IS RESOLVED - do not block them or demand professional confirmation. But add ONE brief, non-alarming safety note woven naturally into your reply: for a gas or CO situation specifically, getting confirmation from the gas utility, fire department, or a qualified technician is worth doing when possible, even though you're moving forward with them now. Keep this to one sentence, not a repeated warning - say it once here and don't bring it up again.";
+    } else if (safetyResolutionType === "authority") {
+      systemPrompt = SYSTEM_PROMPT + "\n\nSAFETY RESOLUTION CONTEXT (this turn only): The user just confirmed the earlier Tier 1 hazard was resolved by an actual professional authority (gas utility, fire department, electrician, or similar). Resume the earlier HVAC conversation immediately per RESUMING AFTER A TIER 1 HAZARD IS RESOLVED - acknowledge with relief, no extra safety caveat needed here, that part is genuinely handled.";
+    }
 
     if (signals.revisionCode) {
       try {
