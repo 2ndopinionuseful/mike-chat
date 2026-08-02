@@ -75,6 +75,8 @@ const SYSTEM_PROMPT = [
   "",
   "HOW YOU TALK",
   "",
+  "Respond to what the person actually said or shared, immediately - no scripted preamble, no generic greeting-of-the-day, no 'Good morning/afternoon/evening.' If they upload a quote, acknowledge the quote. If they ask a question, answer it. If they sound stressed, acknowledge that. The opening line of the conversation (handled separately, before you're even involved) already covers the greeting - your job starts at responding to their actual situation, not re-greeting them. The goal is that someone thinks 'this feels like talking to an experienced HVAC advisor,' not 'this sounds like AI reading a script.'",
+  "",
   "Default to 1-3 sentences. Avoid perfect structure or 'complete thought' endings - a little roughness is fine and preferred.",
   "",
   "Prefer: 'might be...', 'feels like...', 'I've seen...', 'honestly...', 'this is where it gets tricky...', 'got it...', 'sounds like...'",
@@ -88,6 +90,18 @@ const SYSTEM_PROMPT = [
   "If a response starts to feel polished, complete, or 'advisor-like' - shorten it or rough it up. Would someone actually type this casually on their phone in 20 seconds? If not, simplify.",
   "",
   "Being casual and direct doesn't mean being cold. When someone's dealing with an expensive repair or replacement, briefly acknowledge their situation before moving into the analysis. Examples: 'Yeah, I can see why you'd want a second opinion.' / 'That's a significant investment, so it's worth taking a careful look.' / 'I'd want to understand that before spending that kind of money too.' Keep these to one sentence - they should feel natural, not scripted or overly sympathetic.",
+  "",
+  "AUTOMATIC SAFETY DETECTION - DON'T WAIT TO BE TOLD IT'S AN EMERGENCY",
+  "",
+  "Recognize risk signals yourself rather than waiting for the user to frame something as urgent. Watch for: elderly occupants, infants or young children, medical conditions, extreme heat or cold, a gas smell, a burning smell, a carbon monoxide alarm going off, electrical hazards (sparking, exposed wiring), or water pooling around equipment. These fall into two different tiers - do not treat them the same.",
+  "",
+  "TIER 1 - IMMEDIATE LIFE OR FIRE HAZARD (not an HVAC question anymore, overrides everything else in this prompt including the report workflow): a gas smell, a carbon monoxide alarm sounding, smoke or an active burning smell, sparking/arcing/visible electrical damage, or water contacting live electrical equipment. When any of these are present, immediately: (1) tell everyone to leave the building, (2) tell them not to investigate the source themselves, (3) if gas is suspected, do not operate switches, appliances, phones, or anything that could create a spark while still inside, (4) from outside, call 911, the fire department, or the gas utility as appropriate, (5) do not advise calling an HVAC contractor first - that's not the right first call here, (6) do not continue diagnosing, ask intake questions, discuss pricing, or offer the report - none of that belongs in this moment, (7) do not tell them to re-enter until emergency responders say it's safe.",
+  "",
+  "TIER 2 - URGENT HVAC/HABITABILITY RISK, NOT IMMEDIATELY LIFE-THREATENING: no cooling during extreme heat, no heat during extreme cold, elderly people/infants/disabled occupants/people with medical conditions in the home combined with a habitability problem, or significant HVAC water leakage with no electrical hazard evident. For these: (1) acknowledge the stress briefly, (2) clearly state that it should be treated as urgent, (3) prioritize moving vulnerable occupants somewhere safe and conditioned, (4) recommend urgent HVAC service, (5) defer pricing, negotiation, and repair-vs-replacement analysis until the immediate risk is stabilized, (6) reassure, then ask one useful next question.",
+  "",
+  "In Tier 2 situations, take ownership rather than putting the judgment call on the user. Not 'if your home isn't staying safe...' (which asks them to assess their own risk) but 'With 105°F temperatures and an elderly person in the house, I'd treat this as an emergency' (which makes the call for them, clearly). Removing that burden from someone who's already stressed is part of the job here.",
+  "",
+  "RESUMING AFTER A TIER 1 HAZARD IS RESOLVED: if you're seeing this message, it means a Tier 1 hazard from earlier in this conversation has just been confirmed resolved by a real authority (the gas utility, fire department, electrician, or similar) - the application has already verified this before routing here. Briefly acknowledge the resolution with genuine relief - something like 'Good - I'm glad everyone's safe and the gas company got it handled' - then resume the earlier HVAC conversation naturally from wherever it was interrupted. Don't restart the conversation, don't re-ask things already answered before the interruption, and don't repeat safety instructions - that's over now. If they were discussing a quote or asking a question before the interruption, pick that thread back up in the same reply as the acknowledgment, not as a separate later step.",
   "",
   "EMPATHY AND URGENCY - THE EMERGENCY MODE IN PRACTICE",
   "",
@@ -450,6 +464,77 @@ function isDeclineReply(text: string): boolean {
   const t = text.toLowerCase();
   return /\bno\b|not now|not right now|no thanks|maybe later|not interested|just chat|skip the report|don'?t want a report|not today/.test(t);
 }
+
+// SAFETY OVERRIDE: the report-offer gate runs entirely in code, before the
+// model is ever called - which means without this check, someone describing
+// a real emergency (gas smell, CO alarm) who ALSO happens to mention a price
+// could get routed straight to the fixed report-offer response, and the
+// model - along with all its TIER 1 safety instructions - would never run
+// at all. This must be checked first, before any gate logic, and must
+// bypass the gate completely when true, no exceptions.
+//
+// IMPORTANT: checks only the LATEST user message, not the full history.
+// Checking full history would mean one mention of "gas smell" permanently
+// locks the entire rest of the conversation into safety-only mode forever,
+// with no way out even after the person says they're safe. Persistence
+// across turns is instead handled explicitly via getSafetyState/
+// setSafetyState below, with a real resolution signal required to exit.
+function hasImmediateSafetyHazard(messages: Array<{ role: string; content: unknown }>): boolean {
+  const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
+  if (!lastUserMessage) return false;
+  const text = flattenForExtraction(lastUserMessage.content).toLowerCase();
+
+  const hazardTerms = [
+    "smell gas", "gas smell", "smell of gas", "smells like gas", "gas leak",
+    "carbon monoxide", "co alarm", "co detector", "co2 alarm",
+    "smoke", "burning smell", "smells like it's burning", "smells like burning",
+    "on fire", "there's a fire", "sparking", "spark", "arcing",
+    "exposed wire", "exposed wiring", "electrical fire",
+  ];
+  return hazardTerms.some((t) => text.includes(t));
+}
+
+// Resolution requires PROFESSIONAL confirmation, not self-assessment - a
+// vague "smell's gone" or "I think we're fine" is not sufficient when the
+// original issue was gas, CO, smoke, fire, or electrical. Two distinct
+// checks: does the message reference an actual authority AND some kind of
+// clearance/confirmation language together (real resolution), versus does
+// it only contain vague self-assessment language with no authority
+// mentioned at all (not sufficient - ask for confirmation instead).
+function isAuthorityConfirmedResolution(text: string): boolean {
+  const t = text.toLowerCase();
+  const hasAuthority = /gas company|gas utility|fire department|fire dept|electrician|technician|responder|utility company|first responder|emergency crew|fire crew|dispatcher/.test(t);
+  const hasClearanceLanguage = /clear(ed)?|confirm(ed)?|safe|repair(ed)?|fixed|resolved|shut (it )?off|said it'?s ok/.test(t);
+  return hasAuthority && hasClearanceLanguage;
+}
+
+function isVagueResolutionClaim(text: string): boolean {
+  const t = text.toLowerCase();
+  if (isAuthorityConfirmedResolution(t)) return false; // authority-confirmed takes precedence
+  return /safe now|we'?re safe|everyone'?s (safe|out|okay|fine)|all clear|resolved|false alarm|handled( it)?|situation is over|fixed now|smell'?s? gone|no more smell|turned out to be nothing|back inside|we'?re (ok|okay|fine) now|i think (we'?re|it'?s) (fine|ok|okay)/.test(t);
+}
+
+const FIXED_SAFETY_CONFIRMATION_REQUEST = `Because this involved a possible gas, fire, or electrical hazard, I can only continue once a qualified responder - the gas utility, fire department, or an electrician - has confirmed the property is safe. Has someone confirmed that yet?`;
+
+type SafetyState = "active" | "resolved";
+
+async function getSafetyState(sessionId: string): Promise<SafetyState> {
+  try {
+    const state = await redis.get("safety_state:" + sessionId);
+    return state === "active" ? "active" : "resolved";
+  } catch (e) {
+    console.error("Safety state read failed (defaulting to resolved/inactive):", e);
+    return "resolved";
+  }
+}
+
+async function setSafetyState(sessionId: string, state: SafetyState): Promise<void> {
+  try {
+    await redis.set("safety_state:" + sessionId, state, { ex: 60 * 60 * 24 });
+  } catch (e) {
+    console.error("Safety state write failed:", e);
+  }
+}
 // Earlier prompt-only attempts kept leaking analysis through exactly those
 // "harmless" observations, so this version removes the opening for it
 // entirely. This exact text is returned by the application, not generated
@@ -461,6 +546,24 @@ Buying an HVAC system is a significant investment, and it's not always easy to t
 Rather than giving you a quick take, I'd rather review it the same thorough way I'd want it reviewed if it were my own decision - pricing, equipment, warranties, installation scope, and anything worth a second look.
 
 The full Second Opinion Report is free right now. Want me to generate it?`;
+
+const MINIMAL_SAFETY_SYSTEM_PROMPT = `You are Mike, an independent HVAC advisor. Right now, this conversation involves a possible immediate life or fire hazard - a gas smell, a carbon monoxide alarm, smoke or burning smell, sparking/arcing/electrical damage, or water contacting live electrical equipment.
+
+You are an HVAC advisor, not an emergency dispatcher, medical advisor, fire-safety authority, or gas-utility representative. Your role here is narrow and brief: identify that this may be dangerous, tell them to leave and call the right authority, then stop. You are not equipped to diagnose the hazard, tell them how to repair/shut down/test/investigate it, manage the emergency on an ongoing basis, or confirm the building is actually safe - that's the job of the professional responder, not you.
+
+This is the ONLY thing you should address in this response. Do not discuss pricing, quotes, reports, contractor recommendations, uploads, warranties, or ask any HVAC diagnostic questions. Do not mention the Second Opinion Report. Nothing else belongs in this response.
+
+Respond warmly but urgently and clearly:
+1. Tell them to leave the building immediately.
+2. Tell them not to investigate the source themselves.
+3. If gas is suspected, explicitly warn against operating switches, appliances, phones, or anything that could create a spark while still inside.
+4. Tell them to call 911, the fire department, or the gas utility (as appropriate to the hazard) from outside.
+5. Do not suggest calling an HVAC contractor as the first step.
+6. Tell them not to re-enter until emergency responders say it's safe.
+
+Keep it to a few clear sentences, not a long list. Acknowledge their concern briefly, then be direct about what to do. This is basic life safety, not an HVAC judgment call.
+
+If you've already given these instructions earlier in this conversation and the user is asking a follow-up (not describing a new warning sign), don't repeat the full instructions verbatim - keep it brief, encourage them to stay in contact with the responder, and don't add new information or keep questioning them about the emergency.`;
 
 const CLASSIFICATION_PROMPT = `You are a classifier, not an HVAC advisor. Decide only whether this conversation has enough specific information for a meaningful, personalized HVAC quote/decision report. Do not draft customer-facing language. Do not perform any HVAC analysis. Output ONLY valid JSON, nothing else - no preamble, no markdown fences.
 
@@ -710,6 +813,81 @@ export async function POST(req: NextRequest) {
       lastUserMessage: signals.lastUserMessage.substring(0, 200),
     }));
 
+    // TIER 1 SAFETY OVERRIDE - checked before ANY other routing decision:
+    // before the revision-code lookup, before the report-offer gate, before
+    // the full system prompt is even assembled. This is a true architectural
+    // bypass - the model never sees the report/pricing/upload/intake
+    // instructions at all on this path, because we send it a different,
+    // minimal system prompt containing ONLY the safety response.
+    //
+    // Three-way branch on each turn while a Tier 1 hazard is in play:
+    // (1) a NEW hazard just mentioned -> full safety response
+    // (2) still active from an earlier turn, and the user's latest message
+    //     only contains a VAGUE self-assessment ("smell's gone", "we're
+    //     fine") with no professional authority mentioned -> do NOT clear
+    //     safety mode, ask a deterministic, fixed confirmation question
+    //     instead - self-assessment isn't sufficient for gas/CO/fire/
+    //     electrical specifically
+    // (3) still active, and the latest message references an actual
+    //     authority (gas company, fire department, electrician, etc.)
+    //     confirming clearance -> genuinely resolved, clear the state and
+    //     fall through to completely normal routing, which resumes the
+    //     interrupted HVAC conversation naturally
+    //
+    // Must win even when the same message also contains a quote amount,
+    // contractor details, replacement intent, report intent, urgency
+    // language, or an uploaded document.
+    const existingSafetyState = await getSafetyState(sessionId);
+    const lastUserMsgForSafety = [...messages].reverse().find((m) => m.role === "user");
+    const lastUserTextForSafety = lastUserMsgForSafety ? flattenForExtraction(lastUserMsgForSafety.content) : "";
+
+    const isNewHazard = hasImmediateSafetyHazard(messages);
+
+    if (existingSafetyState === "active" && isAuthorityConfirmedResolution(lastUserTextForSafety)) {
+      // Genuinely resolved - clear state, fall through to normal routing.
+      // The full system prompt handles acknowledging relief and resuming
+      // the interrupted conversation naturally (see the resumption note in
+      // TIER 1's prompt section) - nothing special needs to happen here
+      // beyond clearing the flag.
+      await setSafetyState(sessionId, "resolved");
+      console.log(JSON.stringify({ event: "tier1_safety_resolved_by_authority", sessionId, timestamp }));
+    } else if (existingSafetyState === "active" && isVagueResolutionClaim(lastUserTextForSafety) && !isNewHazard) {
+      // Vague self-assessment, no authority mentioned - stay in safety mode
+      // but don't repeat full evacuation instructions. Fixed, deterministic
+      // response for the same reliability reasons as everything else safety
+      // related in this file - no model call, no room for drift.
+      console.log(JSON.stringify({ event: "tier1_vague_resolution_claim_rejected", sessionId, timestamp }));
+      return NextResponse.json({ reply: FIXED_SAFETY_CONFIRMATION_REQUEST, sessionId });
+    } else if (isNewHazard || existingSafetyState === "active") {
+      await setSafetyState(sessionId, "active");
+      console.log(JSON.stringify({
+        event: "tier1_safety_override_triggered",
+        sessionId,
+        timestamp,
+        newHazard: isNewHazard,
+        ongoingFromPriorTurn: existingSafetyState === "active" && !isNewHazard,
+      }));
+      try {
+        const safetyResponse = await client.messages.create({
+          model: "claude-haiku-4-5",
+          max_tokens: 500,
+          system: MINIMAL_SAFETY_SYSTEM_PROMPT,
+          messages,
+        });
+        const block = safetyResponse.content[0];
+        const replyText = block.type === "text" ? block.text : "Please leave the building immediately and call 911 or your gas utility from outside. Do not investigate the source yourself.";
+        return NextResponse.json({ reply: replyText, sessionId });
+      } catch (e) {
+        console.error("Tier 1 safety response failed - using hardcoded fallback:", e);
+        return NextResponse.json({
+          reply: "Please leave the building immediately and call 911 or your gas utility from outside. Do not investigate the source yourself, and do not operate any switches if you smell gas.",
+          sessionId,
+        });
+      }
+    }
+    // If none of the above matched, this was never a Tier 1 situation at
+    // all - proceed to completely normal routing below.
+
     let systemPrompt = SYSTEM_PROMPT;
 
     if (signals.revisionCode) {
@@ -742,6 +920,9 @@ export async function POST(req: NextRequest) {
     // State is explicitly stored per session (not inferred by searching
     // message text for marker phrases). States: not_triggered -> offered ->
     // accepted|declined -> (accepted path only) report_generated.
+    //
+    // Tier 1 safety messages never reach this code at all - they were
+    // caught and returned early above, before this point in the file.
     const workflowState = await getReportWorkflowState(sessionId);
 
     if (workflowState === "not_triggered" && !signals.revisionCode) {
