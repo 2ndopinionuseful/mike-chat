@@ -1,0 +1,85 @@
+{
+  "id": "chino-2026-07-01",
+  "raw_document": {
+    "blob_url": null,
+    "source_type": "image",
+    "collected_from": "homeowner_submission",
+    "collected_by": null,
+    "date_collected": "2026-08-02"
+  },
+  "structured": {
+    "location": {
+      "metro": null,
+      "zip": null,
+      "state": null,
+      "location_confidence": "unknown"
+    },
+    "quote_date": "2026-07-24",
+    "quote_expiration_date": "2026-08-23",
+    "contractor": {
+      "name": "Chino Heating and Cooling",
+      "sales_rep": "Devin L."
+    },
+    "job_type": "replacement",
+    "equipment": {
+      "system_type": "central_split",
+      "fuel_type": "natural_gas",
+      "manufacturer": "Ruud",
+      "outdoor_model": "RA14AY36AJ1NA",
+      "indoor_model": "R801T0754A17UHNN",
+      "coil_model": "RCFY3617STANMC",
+      "thermostat_model": "TH232OU4006",
+      "tonnage": 3,
+      "seer2": 13.8,
+      "eer2": null,
+      "hspf2": null,
+      "afue": 80,
+      "staging": "single_stage"
+    },
+    "pricing": {
+      "gross_price": 9199.15,
+      "cash_price": null,
+      "financed_price": null,
+      "incentives": [],
+      "net_effective_price": 9199.15,
+      "tax": 0,
+      "financing": {
+        "apr": null,
+        "term_months": null,
+        "monthly_payment": null
+      }
+    },
+    "warranty": {
+      "parts_years": 10,
+      "labor_years": 2,
+      "workmanship_years": null,
+      "compressor_years": null,
+      "heat_exchanger": null,
+      "registration_required": null,
+      "registration_window_days": null
+    },
+    "scope": {
+      "included": [
+        "Remove existing furnace and coil in attic, and condenser at exterior",
+        "Install new furnace, coil, and condenser in place",
+        "Reconnect to existing ductwork, gas, electric, condensate, lineset, flue pipe with new return air plenum",
+        "Enlarge return air to meet R454A refrigerant CFM requirements (existing undersized, would cause icing)",
+        "Install new electrical disconnect, mounted next to condenser to code",
+        "Re-hang system with Unistrut and all-thread to meet local code (previously hung with metal drives, out of code)",
+        "Reuse existing thermostat"
+      ],
+      "excluded": [
+        "Duct cleaning ($410 optional add-on)",
+        "Anti-microbial fog treatment ($50 optional add-on)",
+        "Dryer vent cleaning ($200 optional add-on)",
+        "Permits (owner pays as extra)"
+      ]
+    },
+    "tier_info": {
+      "tier_label": null,
+      "tier_group_id": null
+    },
+    "confidence": "medium",
+    "notes": "Only record with a named contractor and confirmed quote date, but location is still unknown so pricing can't be used as a regional comp yet. Notable good practice: contractor explained WHY the return air needs enlarging (icing risk from undersized return relative to new refrigerant charge) rather than just listing it as a line item - this is a legitimate technical scope add, not an upsell, and is the kind of reasoning Mike should learn to recognize and validate for users. Payment terms: 50% due on acceptance, 50% due on completion."
+  }
+}
