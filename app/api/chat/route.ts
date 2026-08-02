@@ -47,6 +47,14 @@ const SYSTEM_PROMPT = [
   "",
   "Be clear, not vague. Be helpful, not exhaustive. Do not solve the user's exact situation publicly. Earn trust through clarity, not withholding.",
   "",
+  "YOUR ACTUAL OBJECTIVE (READ THIS BEFORE EVERYTHING ELSE ABOUT THE REPORT)",
+  "",
+  "Your objective is never to get the user to a report. Your objective is to help the homeowner make the best HVAC decision possible. The report is one of your tools - not your goal. Everything else in this prompt about offering, gating, or generating the report exists in service of that one objective, not as an end in itself.",
+  "",
+  "As you build rapport, answer questions, and understand someone's situation, stay aware of whether the conversation has reached a point where a structured report would genuinely help more than continued conversation would. Help first. Build confidence. Educate when it's appropriate. Understand their actual situation. Then, when a structured review would clearly serve them better than more back-and-forth, recommend it - because it's the best next step for them, not because you're trying to reach a workflow milestone.",
+  "",
+  "Whenever you're genuinely unsure what to do next, the question is simple: what would best help this homeowner make a confident decision? If the answer is continued conversation, keep talking. If the answer is a structured review, recommend the report. Optimize for their confidence, not for report generation - the reports happen naturally when you consistently do the first thing well.",
+  "",
   "MOMENTUM OVER COMPLETENESS",
   "",
   "If you can provide most of the value with the information already available, do it - don't delay helping the user while chasing the last few details. People come to Mike for quick, practical guidance, not to complete a thorough intake form.",
@@ -68,6 +76,8 @@ const SYSTEM_PROMPT = [
   "If a response starts to feel polished, complete, or 'advisor-like' - shorten it or rough it up. Would someone actually type this casually on their phone in 20 seconds? If not, simplify.",
   "",
   "Being casual and direct doesn't mean being cold. When someone's dealing with an expensive repair or replacement, briefly acknowledge their situation before moving into the analysis. Examples: 'Yeah, I can see why you'd want a second opinion.' / 'That's a significant investment, so it's worth taking a careful look.' / 'I'd want to understand that before spending that kind of money too.' Keep these to one sentence - they should feel natural, not scripted or overly sympathetic.",
+  "",
+  "Some situations are more serious than ordinary quote-stress and deserve more than a light acknowledgment: no working AC in extreme heat (especially with young children, elderly family members, or anyone with a health condition), a system failure the household genuinely can't function without, or real financial strain about affording a needed repair. In these cases, name what's actually at stake rather than defaulting to the same one-line acknowledgment used for a routine quote question - and let the practical guidance reflect real urgency, prioritizing getting a working system or emergency service now over a careful multi-quote comparison. This still isn't about performing sympathy - it's about taking the situation as seriously as it actually is.",
   "",
   "Calibrated confidence doesn't mean verbose. Being honest about uncertainty is one clause, not three paragraphs. For a first response to a simple pricing question, aim for the shape: a quick answer, one important qualifier, one good question - not answer, then explanation, then caveats, then more explanation, then question. If a response has multiple paragraphs of hedging before it gets anywhere, it's too long regardless of how accurate the content is.",
   "",
@@ -123,7 +133,7 @@ const SYSTEM_PROMPT = [
   "",
   "While in this state, the following are TEMPORARILY PROHIBITED, even though they're normally good instincts elsewhere in this prompt: do not ask clarifying questions, do not give a price verdict or fairness judgment, do not evaluate or characterize the scope's adequacy, do not list assumptions, do not identify missing items, do not give negotiation advice, do not give a recommendation. If you notice yourself starting to reason toward any of these - stop mid-thought and go straight to the offer instead. This explicitly overrides REASON LIKE AN EXPERT's instinct to ask a decisive question and PRICING CONFIDENCE DISCIPLINE's instinct to give a calibrated read - both are excellent instincts in ordinary conversation, but they do not apply while this state is active.",
   "",
-  "While in this state, you are ONLY allowed to: (1) confirm you've understood the document/situation - naming real details like brand, model, tonnage shows this, (2) give one or two purely factual observations (what the document says, not what you think about it), (3) make the report offer. Nothing else. Example of staying correctly within this state: 'Got it - I can see this is a 5-ton Lennox system, OK46HT-92B-71 condenser with EL18KCV coil, SEER2 19.5+, priced at $17,052 in the proposal. I can go through it line by line here, or generate a structured Second Opinion Report that checks pricing, equipment, scope, missing items, and questions to ask your contractor - it's free during early access. Want the full breakdown?' Notice what's absent: no verdict on whether the price is fair, no question about scope, no assumptions - those are exactly what's prohibited here.",
+  "While in this state, you are ONLY allowed to: (1) confirm you've understood the document/situation - naming real details like brand, model, tonnage shows this, (2) give one or two purely factual observations (what the document says, not what you think about it), (3) make the report offer. Nothing else. Example of staying correctly within this state: 'Got it - I can see this is a 5-ton Lennox system, OK46HT-92B-71 condenser with EL18KCV coil, SEER2 19.5+, priced at $17,052 in the proposal. The full Second Opinion Report is free right now - want me to generate it?' Notice what's absent: no verdict on whether the price is fair, no question about scope, no assumptions - those are exactly what's prohibited here. In practice this section is now a fallback safety net - the application handles this deterministically for most cases (see the code-level gate), but this still applies whenever that gate doesn't catch a high-information moment.",
   "",
   "You exit this state once the user responds to the offer - either accepting (move into writing the full report per OFFER below) or declining (per the exception below, answer directly and briefly, then continue in ordinary INFORMATION GATHERING/analysis mode - the prohibitions above no longer apply once they've explicitly opted out of the report).",
   "",
@@ -213,7 +223,7 @@ const SYSTEM_PROMPT = [
   "",
   "If you still need essential information to understand their situation, ask for that first. Don't interrupt the diagnostic flow just to make the offer.",
   "",
-  "Use this offer during the early-access period: 'You're one of our early users, so the full report's free while I'm improving Mike with real feedback from people using it. If you find it useful, I'd really appreciate a quick review. There's an optional tip too if you want, but absolutely no obligation. Want the full breakdown?' The tip link itself (https://my2ndopinion.gumroad.com/l/hvac-review) belongs in the post-report feedback moment, not in this initial offer - don't include it here.",
+  "Use this offer during the early-access period: 'The full report's free right now. Want the full breakdown?' The tip link itself (https://my2ndopinion.gumroad.com/l/hvac-review) belongs in the post-report feedback moment, not in this initial offer - don't include it here. The review ask also belongs later, in the POST-REPORT FEEDBACK moment after delivery, not stacked into this initial offer.",
   "",
   "Do not say 'Normally $29', 'Usually $29', 'Worth $29', or anything implying the report previously had an established paid price.",
   "",
@@ -373,8 +383,12 @@ function hasReportCandidateSignal(messages: Array<{ role: string; content: unkno
   if (!lastUserMessage) return false;
 
   if (Array.isArray(lastUserMessage.content)) {
+    // NOTE: the wire format uses "document" for PDFs, not "pdf" - page.tsx
+    // converts { type: "pdf" } to { type: "document", source: {...} }
+    // before sending to this API. Checking for "pdf" here was a real bug -
+    // it meant this check silently never matched a PDF upload at all.
     const hasAttachment = (lastUserMessage.content as Array<{ type?: string }>).some(
-      (c) => c.type === "image" || c.type === "pdf"
+      (c) => c.type === "image" || c.type === "document"
     );
     if (hasAttachment) return true;
   }
@@ -386,13 +400,28 @@ function hasReportCandidateSignal(messages: Array<{ role: string; content: unkno
     .toLowerCase();
 
   const hasDollarAmount = /\$[\d,]+|\b\d+k\b/.test(fullText);
-  const hasEquipmentOrQuoteTerm = [
+  const equipmentTerms = [
     "ton", "seer", "furnace", "heat pump", "condenser", "coil",
     "carrier", "trane", "lennox", "daikin", "goodman", "rheem", "american standard",
     "quote", "proposal", "estimate", "invoice",
-  ].some((t) => fullText.includes(t));
+  ];
+  const matchedEquipmentTerms = equipmentTerms.filter((t) => fullText.includes(t));
+  const hasEquipmentOrQuoteTerm = matchedEquipmentTerms.length > 0;
 
-  return hasDollarAmount && hasEquipmentOrQuoteTerm;
+  // Comparing multiple named brands/options is itself Stage-3-level
+  // specificity, per the "multiple contractor options" trigger - even with
+  // no dollar figure ever typed. Count distinct brand names specifically
+  // (not the generic terms like "quote" or "ton") to catch this.
+  const brandTerms = ["carrier", "trane", "lennox", "daikin", "goodman", "rheem", "american standard"];
+  const matchedBrandCount = brandTerms.filter((b) => fullText.includes(b)).length;
+  const isComparingMultipleOptions = matchedBrandCount >= 2;
+
+  // A sustained, equipment-specific conversation is also Stage-3-level
+  // specificity even without a literal price - someone who's gone several
+  // turns deep discussing their actual system is past general education.
+  const isSustainedEquipmentDiscussion = hasEquipmentOrQuoteTerm && messages.length >= 6;
+
+  return hasDollarAmount && hasEquipmentOrQuoteTerm ? true : isComparingMultipleOptions || isSustainedEquipmentDiscussion;
 }
 
 // Simple keyword-based accept/decline read of the reply to an offer. Default
@@ -407,9 +436,13 @@ function isDeclineReply(text: string): boolean {
 // "harmless" observations, so this version removes the opening for it
 // entirely. This exact text is returned by the application, not generated
 // by the model - see classifyReportOfferTrigger and its use in POST below.
-const FIXED_REPORT_OFFER_RESPONSE = `I've reviewed what you shared and there's enough detail for a meaningful evaluation.
+const FIXED_REPORT_OFFER_RESPONSE = `Thanks for sharing your quote - I've reviewed it and everything came through correctly. Looks like a detailed proposal along with some supporting documents.
 
-You're one of our early users, so the full Second Opinion Report is free while I'm improving Mike with real homeowner feedback. It will review the pricing, equipment, scope, warranties, missing items and questions to ask. Want me to generate it?`;
+Buying an HVAC system is a significant investment, and it's not always easy to tell whether the equipment, pricing, installation scope, and warranties all line up the way they should.
+
+Rather than giving you a quick take, I'd rather review it the same thorough way I'd want it reviewed if it were my own decision - pricing, equipment, warranties, installation scope, and anything worth a second look.
+
+The full Second Opinion Report is free right now. Want me to generate it?`;
 
 const CLASSIFICATION_PROMPT = `You are a classifier, not an HVAC advisor. Decide only whether this conversation has enough specific information for a meaningful, personalized HVAC quote/decision report. Do not draft customer-facing language. Do not perform any HVAC analysis. Output ONLY valid JSON, nothing else - no preamble, no markdown fences.
 
@@ -427,6 +460,7 @@ Set should_offer_report to true when ANY of these are present:
 - Exact price plus equipment and scope details sufficient for personalized evaluation
 - A comparison of two or more specific quotes
 - A request to judge a specific contractor recommendation or written warranty document
+- The user is comparing multiple named contractors, brands, or equipment options for their actual decision - this counts even with no dollar figure mentioned yet, since comparing real options is itself decision-specific, not general education
 
 Do NOT set it true for: general education questions, a vague mention of a system with no real numbers or equipment specified, early exploratory conversation, or anything where you're not confident there's enough for a genuinely personalized evaluation.
 
@@ -679,10 +713,17 @@ export async function POST(req: NextRequest) {
     // hold the boundary even under explicit, named prohibition (see
     // tests/high-info-quote-flow.md for the full history).
     //
+    // The fixed response itself now carries the warmth/rapport-building
+    // (recognition -> empathy -> value explanation -> offer, all in one
+    // deterministic message) - no separate model-authored "warm-up" turn is
+    // needed, which means there's no reopened leakage risk at all. An
+    // earlier version tried a real model turn before forcing the offer;
+    // this version gets the same warmth without that risk, since nothing
+    // here is model-generated.
+    //
     // State is explicitly stored per session (not inferred by searching
-    // message text for marker phrases - that was fragile and got replaced).
-    // Five states: not_triggered -> offered -> accepted|declined -> (accepted
-    // path only) report_generated.
+    // message text for marker phrases). States: not_triggered -> offered ->
+    // accepted|declined -> (accepted path only) report_generated.
     const workflowState = await getReportWorkflowState(sessionId);
 
     if (workflowState === "not_triggered" && !signals.revisionCode) {
@@ -700,14 +741,11 @@ export async function POST(req: NextRequest) {
             documentType: classification.document_type,
           }));
           await setReportWorkflowState(sessionId, "offered");
-          // Fixed, application-controlled response - never generated by the
-          // main model, so it can't drift into analysis. Only the report is
-          // offered here - chat is not presented as an equivalent option.
           return NextResponse.json({ reply: FIXED_REPORT_OFFER_RESPONSE, sessionId });
         }
       }
-      // No candidate signal, or classifier didn't trigger - fall through to
-      // normal chat below, completely untouched by any of this.
+      // No candidate signal, or classifier didn't trigger - normal chat,
+      // completely untouched by any of this.
     } else if (workflowState === "offered") {
       // This turn is the user's response to the offer. Determine accept vs.
       // decline from their message, then let normal reasoning proceed either
