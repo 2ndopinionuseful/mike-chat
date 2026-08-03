@@ -416,6 +416,30 @@ async function setReportWorkflowState(sessionId: string, state: ReportWorkflowSt
   }
 }
 
+// Tiny separate flag, same pattern as getSafetyState/setSafetyState below -
+// deliberately NOT folded into ReportWorkflowState. That type is checked
+// with exact string equality elsewhere in this file; widening it to
+// "offered_generic"/"offered_specific" would mean auditing every place
+// that currently expects the bare "offered" value. A standalone bit is
+// lower-risk for what is really a one-time "did we already upgrade this
+// offer's wording" marker.
+async function getOfferIntentUpgraded(sessionId: string): Promise<boolean> {
+  try {
+    return (await redis.get("offer_intent_upgraded:" + sessionId)) === "true";
+  } catch (e) {
+    console.error("Offer intent upgrade flag read failed (defaulting to false):", e);
+    return false;
+  }
+}
+
+async function setOfferIntentUpgraded(sessionId: string, value: boolean): Promise<void> {
+  try {
+    await redis.set("offer_intent_upgraded:" + sessionId, String(value), { ex: 60 * 60 * 24 * 7 });
+  } catch (e) {
+    console.error("Offer intent upgrade flag write failed:", e);
+  }
+}
+
 // Cheap, deterministic, no API call. Only escalate to the (paid, slower)
 // classifier call when there's a real chance this turn contains report-level
 // information - ordinary educational chat should never reach the classifier
@@ -473,6 +497,83 @@ function hasReportCandidateSignal(messages: Array<{ role: string; content: unkno
 function isDeclineReply(text: string): boolean {
   const t = text.toLowerCase();
   return /\bno\b|not now|not right now|no thanks|maybe later|not interested|just chat|skip the report|don'?t want a report|not today/.test(t);
+}
+
+// ---- Intent-specific report-offer wording ----
+//
+// Every FIXED_REPORT_OFFER_RESPONSES variant is hardcoded and deterministic,
+// same reasoning as the original single fixed response this replaces: no
+// model call happens before the offer, so there is no risk of the analysis
+// leaking ahead of it. detectOfferIntent is pure string matching against the
+// triggering user message only - never the model, never the full history.
+type OfferIntent = "comparison" | "repair_vs_replace" | "warranty" | "fairness";
+
+// Order matters: checked most-specific-first, since a message could contain
+// terms from more than one category (e.g. "compare the warranty on both").
+function detectOfferIntent(text: string): OfferIntent {
+  const t = text.toLowerCase();
+
+  const comparisonTerms = [
+    "compare", "comparison", "which one", "which is better", "tell me which",
+    "choose between", "best option", "side by side", "side-by-side", "differences between",
+  ];
+  if (comparisonTerms.some((term) => t.includes(term))) return "comparison";
+
+  const repairVsReplaceTerms = [
+    "repair or replace", "replace or repair", "repair vs replace", "repair versus replace",
+    "worth repairing", "worth fixing", "fix or replace", "should i repair", "should i replace",
+  ];
+  if (repairVsReplaceTerms.some((term) => t.includes(term))) return "repair_vs_replace";
+
+  const warrantyTerms = [
+    "warranty", "warranties", "what's covered", "what is covered", "covered under warranty",
+  ];
+  if (warrantyTerms.some((term) => t.includes(term))) return "warranty";
+
+  return "fairness";
+}
+
+// Shape for every variant: warm acknowledgment -> reassurance -> what Mike
+// will examine -> the offer. Warmth comes from explaining what gets
+// evaluated, never from flattering the user's prior decisions (that reads
+// as persuasion technique, not genuine helpfulness) and never from
+// revealing any quote-specific finding, ranking, or verdict - all of that
+// stays inside the report, unlocked only after acceptance.
+const FIXED_REPORT_OFFER_RESPONSES: Record<OfferIntent, string> = {
+  comparison: `Absolutely - I can help you make sense of the two proposals. HVAC quotes can look similar on the surface while differing quite a bit in equipment, scope, warranties, and long-term value.
+
+I'll compare them side by side and walk through what actually matters in the full Second Opinion Report. It's free during early access. Want me to generate it now?`,
+
+  fairness: `Absolutely - I can help you understand whether this quote makes sense. The important part isn't just the price - it's also the equipment, installation scope, warranties, exclusions, and anything that could cost more later.
+
+I'll review all of that in the full Second Opinion Report. It's free during early access. Want me to generate it now?`,
+
+  repair_vs_replace: `Absolutely - I can help you think through repair versus replacement. The right call usually comes down to more than age alone - cost, remaining system life, efficiency, and what could go wrong next all factor in.
+
+I'll weigh all of that and give you a clear read in the full Second Opinion Report. It's free during early access. Want me to generate it now?`,
+
+  warranty: `Absolutely - I can help you understand what this warranty actually protects. Coverage often looks more complete on paper than it turns out to be once you check exclusions, terms, and what's labor versus parts.
+
+I'll break that down clearly in the full Second Opinion Report. It's free during early access. Want me to generate it now?`,
+};
+
+// Detects whether a FOLLOW-UP message (sent after the generic/initial offer
+// has already gone out, i.e. workflowState === "offered") clarifies what
+// the user actually wants - e.g. an upload-only turn triggered the offer,
+// and the very next message says "compare the two quotes." This is the
+// same term list as detectOfferIntent's categories, flattened, so that any
+// of the four intents can be recognized here too.
+function isReportIntentClarification(text: string): boolean {
+  const t = text.toLowerCase();
+  const terms = [
+    "compare", "comparison", "which one", "which is better", "tell me which",
+    "choose between", "best option", "side by side", "side-by-side", "differences between",
+    "repair or replace", "replace or repair", "repair vs replace", "repair versus replace",
+    "worth repairing", "worth fixing", "fix or replace", "should i repair", "should i replace",
+    "warranty", "warranties", "what's covered", "what is covered", "covered under warranty",
+    "is this fair", "is the price fair", "overpriced", "good price", "reasonable price",
+  ];
+  return terms.some((term) => t.includes(term));
 }
 
 // SAFETY OVERRIDE: the report-offer gate runs entirely in code, before the
@@ -550,17 +651,6 @@ async function setSafetyState(sessionId: string, state: SafetyState): Promise<vo
     console.error("Safety state write failed:", e);
   }
 }
-// Earlier prompt-only attempts kept leaking analysis through exactly those
-// "harmless" observations, so this version removes the opening for it
-// entirely. This exact text is returned by the application, not generated
-// by the model - see classifyReportOfferTrigger and its use in POST below.
-const FIXED_REPORT_OFFER_RESPONSE = `Thanks for sharing your quote - I've reviewed it and everything came through correctly. Looks like a detailed proposal along with some supporting documents.
-
-Buying an HVAC system is a significant investment, and it's not always easy to tell whether the equipment, pricing, installation scope, and warranties all line up the way they should.
-
-Rather than giving you a quick take, I'd rather review it the same thorough way I'd want it reviewed if it were my own decision - pricing, equipment, warranties, installation scope, and anything worth a second look.
-
-The full Second Opinion Report is free right now. Want me to generate it?`;
 
 const MINIMAL_SAFETY_SYSTEM_PROMPT = `You are Mike, an independent HVAC advisor. Right now, this conversation involves a possible immediate life or fire hazard - a gas smell, a carbon monoxide alarm, smoke or burning smell, sparking/arcing/electrical damage, or water contacting live electrical equipment.
 
@@ -932,14 +1022,18 @@ export async function POST(req: NextRequest) {
     // The fixed response itself now carries the warmth/rapport-building
     // (recognition -> empathy -> value explanation -> offer, all in one
     // deterministic message) - no separate model-authored "warm-up" turn is
-    // needed, which means there's no reopened leakage risk at all. An
-    // earlier version tried a real model turn before forcing the offer;
-    // this version gets the same warmth without that risk, since nothing
-    // here is model-generated.
+    // needed, which means there's no reopened leakage risk at all. Each of
+    // the four FIXED_REPORT_OFFER_RESPONSES variants is selected by pure
+    // string matching (detectOfferIntent) against the triggering message -
+    // never by the model - so warmth and specificity come with zero
+    // additional leakage risk versus the original single generic response.
     //
     // State is explicitly stored per session (not inferred by searching
     // message text for marker phrases). States: not_triggered -> offered ->
-    // accepted|declined -> (accepted path only) report_generated.
+    // accepted|declined -> (accepted path only) report_generated. A
+    // separate one-shot flag (offer_intent_upgraded) tracks whether the
+    // "offered" state's fixed wording has already been upgraded once in
+    // response to a clarifying follow-up - see below.
     //
     // Tier 1 safety messages never reach this code at all - they were
     // caught and returned early above, before this point in the file.
@@ -951,6 +1045,9 @@ export async function POST(req: NextRequest) {
       if (hasReportCandidateSignal(messages)) {
         const classification = await classifyReportOfferTrigger(messages);
         if (classification && classification.should_offer_report === true && classification.evidence_level !== "low") {
+          const offerIntent = detectOfferIntent(signals.lastUserMessage);
+          const offerResponse = FIXED_REPORT_OFFER_RESPONSES[offerIntent];
+
           console.log(JSON.stringify({
             event: "report_offer_gate_triggered",
             sessionId,
@@ -958,20 +1055,48 @@ export async function POST(req: NextRequest) {
             reason: classification.reason,
             evidenceLevel: classification.evidence_level,
             documentType: classification.document_type,
+            offerIntent,
           }));
           await setReportWorkflowState(sessionId, "offered");
-          return NextResponse.json({ reply: FIXED_REPORT_OFFER_RESPONSE, sessionId });
+          return NextResponse.json({ reply: offerResponse, sessionId });
         }
       }
       // No candidate signal, or classifier didn't trigger - normal chat,
       // completely untouched by any of this.
     } else if (workflowState === "offered") {
-      // This turn is the user's response to the offer. Determine accept vs.
-      // decline from their message, then let normal reasoning proceed either
-      // way - the system prompt's own OFFER section handles what to actually
-      // say next in both cases.
+      // This turn is the user's response to the offer - OR a clarifying
+      // follow-up that arrived before any accept/decline (e.g. the offer
+      // fired on an upload-only turn, and the user's very next message is
+      // "compare the two quotes"). Check for that clarification case FIRST,
+      // before falling into the default accept/decline branch below.
       const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
       const lastUserText = lastUserMessage ? flattenForExtraction(lastUserMessage.content) : "";
+
+      const alreadyUpgraded = await getOfferIntentUpgraded(sessionId);
+
+      if (!alreadyUpgraded && !isDeclineReply(lastUserText) && isReportIntentClarification(lastUserText)) {
+        // Not a decline, and the message clarifies what kind of judgment
+        // they actually want - upgrade the offer's wording to match, without
+        // advancing workflowState (it stays "offered") and without treating
+        // this as acceptance. Allowed only once per session so a user who
+        // keeps asking follow-up questions instead of saying yes/no doesn't
+        // get stuck in a loop of re-offered variants.
+        const offerIntent = detectOfferIntent(lastUserText);
+        const offerResponse = FIXED_REPORT_OFFER_RESPONSES[offerIntent];
+        await setOfferIntentUpgraded(sessionId, true);
+        console.log(JSON.stringify({
+          event: "report_offer_intent_upgraded",
+          sessionId,
+          timestamp,
+          offerIntent,
+        }));
+        return NextResponse.json({ reply: offerResponse, sessionId });
+        // workflowState intentionally left as "offered" - not advanced.
+      }
+
+      // Determine accept vs. decline from their message, then let normal
+      // reasoning proceed either way - the system prompt's own OFFER
+      // section handles what to actually say next in both cases.
       if (isDeclineReply(lastUserText)) {
         await setReportWorkflowState(sessionId, "declined");
         console.log(JSON.stringify({ event: "report_offer_declined", sessionId, timestamp }));
