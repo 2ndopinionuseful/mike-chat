@@ -11,11 +11,23 @@ type MessageContent =
 type Message = {
   role: "user" | "assistant";
   content: string | MessageContent[];
-  displayImage?: string;
+  displayImages?: string[];
+};
+
+type PendingFile = {
+  id: string;
+  blobUrl: string;
+  previewUrl: string;
+  isPdf: boolean;
+  name: string;
 };
 
 function generateSessionId(): string {
   return "s_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
+}
+
+function generateFileId(): string {
+  return "f_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
 }
 
 function getRevisionCode(text: string): string {
@@ -24,6 +36,11 @@ function getRevisionCode(text: string): string {
 }
 
 const SUPPORTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+
+// Cap on how many quotes/files can be attached to a single outgoing message.
+// This is a UX/sanity limit, not an API limit - keeps upload time and the
+// pending-attachment tray reasonable when comparing several proposals at once.
+const MAX_ATTACHMENTS = 5;
 
 function renderMarkdown(text: string, onCopyCode: (code: string) => void, copiedCode: boolean) {
   const lines = text.split("\n");
@@ -136,7 +153,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [loadingReport, setLoadingReport] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [pendingImage, setPendingImage] = useState<{blobUrl: string; previewUrl: string; isPdf?: boolean} | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [sessionId, setSessionId] = useState<string>("");
   const [restored, setRestored] = useState(false);
@@ -227,40 +244,64 @@ export default function Home() {
     }
   }, [restored]);
 
-  const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.type === "application/msword" || file.name.endsWith(".docx") || file.name.endsWith(".doc")) {
-      alert("Word documents cannot be uploaded directly. Please paste the text from your quote into the chat, or take a screenshot and upload that instead.");
-      e.target.value = "";
-      return;
-    }
-    const isPdf = file.type === "application/pdf";
-    if (!isPdf && !SUPPORTED_IMAGE_TYPES.includes(file.type)) {
-      alert("That image format isn't supported (this often happens with iPhone photos saved as HEIC). Try taking a screenshot instead, or re-save the photo as JPG or PNG before uploading.");
-      e.target.value = "";
-      return;
-    }
+  // Handles one or many files selected at once (the <input> below has the
+  // `multiple` attribute). Each valid file is uploaded to Vercel Blob and
+  // appended to the pendingFiles tray - existing pending files are kept,
+  // so a user can also add files across multiple picks before hitting send.
+  const handleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
 
-    const previewUrl = URL.createObjectURL(file);
-    setUploading(true);
-    try {
-      // Uploads directly from the browser to Vercel Blob storage - the file
-      // never passes through our own API route, which is what avoids
-      // Vercel's hard 4.5MB serverless function body limit entirely.
-      const newBlob = await upload(file.name, file, {
-        access: "public",
-        handleUploadUrl: "/api/upload",
-      });
-      setPendingImage({ blobUrl: newBlob.url, previewUrl, isPdf });
-    } catch (err) {
-      console.error("Blob upload failed:", err);
-      alert("Upload failed - try again, or paste the quote text directly instead.");
-      URL.revokeObjectURL(previewUrl);
-    } finally {
-      setUploading(false);
+    const remainingSlots = MAX_ATTACHMENTS - pendingFiles.length;
+    if (remainingSlots <= 0) {
+      alert(`You can attach up to ${MAX_ATTACHMENTS} files at once. Remove one before adding another.`);
+      e.target.value = "";
+      return;
     }
+    if (files.length > remainingSlots) {
+      alert(`You can attach up to ${MAX_ATTACHMENTS} files at once - only the first ${remainingSlots} will be added.`);
+    }
+    const filesToProcess = files.slice(0, remainingSlots);
+
+    setUploading(true);
+    for (const file of filesToProcess) {
+      if (file.type === "application/msword" || file.name.endsWith(".docx") || file.name.endsWith(".doc")) {
+        alert(`"${file.name}" is a Word document and can't be uploaded directly. Please paste the text from your quote into the chat, or take a screenshot and upload that instead.`);
+        continue;
+      }
+      const isPdf = file.type === "application/pdf";
+      if (!isPdf && !SUPPORTED_IMAGE_TYPES.includes(file.type)) {
+        alert(`"${file.name}" isn't a supported image format (this often happens with iPhone photos saved as HEIC). Try a screenshot instead, or re-save the photo as JPG or PNG before uploading.`);
+        continue;
+      }
+
+      const previewUrl = URL.createObjectURL(file);
+      try {
+        // Uploads directly from the browser to Vercel Blob storage - the file
+        // never passes through our own API route, which is what avoids
+        // Vercel's hard 4.5MB serverless function body limit entirely.
+        const newBlob = await upload(file.name, file, {
+          access: "public",
+          handleUploadUrl: "/api/upload",
+        });
+        setPendingFiles(prev => [...prev, { id: generateFileId(), blobUrl: newBlob.url, previewUrl, isPdf, name: file.name }]);
+      } catch (err) {
+        console.error("Blob upload failed:", err);
+        alert(`Upload failed for "${file.name}" - try again, or paste the quote text directly instead.`);
+        URL.revokeObjectURL(previewUrl);
+      }
+    }
+    setUploading(false);
     e.target.value = "";
+  };
+
+  const removePendingFile = (id: string) => {
+    setPendingFiles(prev => {
+      const target = prev.find(f => f.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter(f => f.id !== id);
+    });
   };
 
   const startOver = () => {
@@ -271,7 +312,8 @@ export default function Home() {
       setSessionId(newId);
       setMessages([getRandomGreeting()]);
       setInput("");
-      setPendingImage(null);
+      pendingFiles.forEach(f => URL.revokeObjectURL(f.previewUrl));
+      setPendingFiles([]);
       setUploading(false);
       if (inputRef.current) {
         inputRef.current.style.height = "auto";
@@ -280,17 +322,24 @@ export default function Home() {
   };
 
   const send = async () => {
-    if ((!input.trim() && !pendingImage) || loading) return;
+    if ((!input.trim() && pendingFiles.length === 0) || loading) return;
     let userMessage: Message;
     let apiContent: MessageContent[];
-    if (pendingImage) {
-      apiContent = [
-        pendingImage.isPdf
-          ? { type: "pdf", url: pendingImage.blobUrl }
-          : { type: "image", url: pendingImage.blobUrl },
-        ...(input.trim() ? [{ type: "text" as const, text: input.trim() }] : [{ type: "text" as const, text: "Here is my HVAC quote. What do you think?" }])
-      ];
-      userMessage = { role: "user", content: apiContent, displayImage: pendingImage.isPdf ? undefined : pendingImage.previewUrl };
+    if (pendingFiles.length > 0) {
+      const fileBlocks: MessageContent[] = pendingFiles.map(f =>
+        f.isPdf ? { type: "pdf", url: f.blobUrl } : { type: "image", url: f.blobUrl }
+      );
+      const textBlock: MessageContent = input.trim()
+        ? { type: "text", text: input.trim() }
+        : {
+            type: "text",
+            text: pendingFiles.length > 1
+              ? `Here are my ${pendingFiles.length} HVAC quotes. What do you think?`
+              : "Here is my HVAC quote. What do you think?",
+          };
+      apiContent = [...fileBlocks, textBlock];
+      const displayImages = pendingFiles.filter(f => !f.isPdf).map(f => f.previewUrl);
+      userMessage = { role: "user", content: apiContent, displayImages: displayImages.length ? displayImages : undefined };
     } else {
       userMessage = { role: "user", content: input.trim() };
       apiContent = [{ type: "text", text: input.trim() }];
@@ -302,7 +351,7 @@ export default function Home() {
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInput("");
-    setPendingImage(null);
+    setPendingFiles([]);
     if (inputRef.current) inputRef.current.style.height = "auto";
     setLoading(true);
     const apiMessages = newMessages.map(m => {
@@ -465,8 +514,16 @@ export default function Home() {
             <div key={i} style={{display:"flex",alignItems:"flex-end",gap:"7px",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
               {m.role==="assistant" && <div style={{width:"25px",height:"25px",borderRadius:"50%",background:"#c8a96e",color:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:"700",fontSize:"11px",flexShrink:0,alignSelf:"flex-start",marginTop:"4px"}}>M</div>}
               <div style={{maxWidth:"85%",display:"flex",flexDirection:"column" as const,gap:"6px",alignItems:m.role==="user"?"flex-end":"flex-start"}}>
-                {m.displayImage && (
-                  <img src={m.displayImage} alt="quote" style={{maxWidth:"100%",borderRadius:"10px",border:"1px solid #333"}}/>
+                {m.displayImages && m.displayImages.length > 0 && (
+                  m.displayImages.length === 1 ? (
+                    <img src={m.displayImages[0]} alt="quote" style={{maxWidth:"100%",borderRadius:"10px",border:"1px solid #333"}}/>
+                  ) : (
+                    <div style={{display:"flex",flexWrap:"wrap" as const,gap:"6px",justifyContent:"flex-end"}}>
+                      {m.displayImages.map((src, imgI) => (
+                        <img key={imgI} src={src} alt={`quote ${imgI + 1}`} style={{width:"110px",height:"110px",objectFit:"cover" as const,borderRadius:"10px",border:"1px solid #333"}}/>
+                      ))}
+                    </div>
+                  )
                 )}
                 {getDisplayText(m.content) && (
                   <div className="msg-bubble" style={m.role==="user"
@@ -526,14 +583,24 @@ export default function Home() {
           </div>
         )}
 
-        {pendingImage && !uploading && (
-          <div style={{padding:"8px 14px",borderTop:"1px solid #1e1e1e",display:"flex",alignItems:"center",gap:"8px"}}>
-            {pendingImage.isPdf
-              ? <div style={{height:"48px",width:"48px",borderRadius:"6px",border:"1px solid #333",background:"#2a1a1a",display:"flex",alignItems:"center",justifyContent:"center",color:"#c8a96e",fontSize:"11px",fontWeight:"700",flexShrink:0}}>PDF</div>
-              : <img src={pendingImage.previewUrl} alt="preview" style={{height:"48px",borderRadius:"6px",border:"1px solid #333"}}/>
-            }
-            <span style={{color:"#888",fontSize:"12px",flex:1}}>{pendingImage.isPdf ? "PDF ready to send" : "Quote photo ready to send"}</span>
-            <button onClick={()=>{URL.revokeObjectURL(pendingImage.previewUrl); setPendingImage(null);}} style={{background:"none",border:"none",color:"#666",cursor:"pointer",fontSize:"16px"}}>x</button>
+        {pendingFiles.length > 0 && !uploading && (
+          <div style={{padding:"8px 14px",borderTop:"1px solid #1e1e1e",display:"flex",flexDirection:"column" as const,gap:"6px"}}>
+            <div style={{display:"flex",flexWrap:"wrap" as const,gap:"8px"}}>
+              {pendingFiles.map(f => (
+                <div key={f.id} style={{display:"flex",alignItems:"center",gap:"6px",background:"#1a1a1a",border:"1px solid #262626",borderRadius:"8px",padding:"4px 8px 4px 4px"}}>
+                  {f.isPdf
+                    ? <div style={{height:"36px",width:"36px",borderRadius:"6px",border:"1px solid #333",background:"#2a1a1a",display:"flex",alignItems:"center",justifyContent:"center",color:"#c8a96e",fontSize:"9px",fontWeight:"700",flexShrink:0}}>PDF</div>
+                    : <img src={f.previewUrl} alt="preview" style={{height:"36px",width:"36px",objectFit:"cover" as const,borderRadius:"6px",border:"1px solid #333"}}/>
+                  }
+                  <span style={{color:"#888",fontSize:"11px",maxWidth:"110px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" as const}}>{f.name}</span>
+                  <button onClick={()=>removePendingFile(f.id)} style={{background:"none",border:"none",color:"#666",cursor:"pointer",fontSize:"15px",padding:"0 2px",lineHeight:1}}>x</button>
+                </div>
+              ))}
+            </div>
+            <span style={{color:"#666",fontSize:"11px"}}>
+              {pendingFiles.length} file{pendingFiles.length > 1 ? "s" : ""} ready to send
+              {pendingFiles.length < MAX_ATTACHMENTS ? ` - add up to ${MAX_ATTACHMENTS - pendingFiles.length} more` : ""}
+            </span>
           </div>
         )}
 
@@ -544,18 +611,18 @@ export default function Home() {
               <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>
             </svg>
           </button>
-          <input ref={fileRef} type="file" accept="image/*,.pdf" onChange={handleImage} style={{display:"none"}}/>
+          <input ref={fileRef} type="file" accept="image/*,.pdf" multiple onChange={handleFiles} style={{display:"none"}}/>
           <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey}
             onInput={(e) => {
               const t = e.currentTarget;
               t.style.height = "auto";
               t.style.height = Math.min(t.scrollHeight, 160) + "px";
             }}
-            placeholder={pendingImage ? "Add a note or just hit send..." : "Reply..."}
+            placeholder={pendingFiles.length > 0 ? "Add a note or just hit send..." : "Reply..."}
             rows={1} disabled={loading}
             style={{flex:1,background:"#1d1d1d",border:"1px solid #262626",borderRadius:"11px",color:"#ccc",padding:"10px 12px",fontSize:"14px",fontFamily:"Georgia,serif",resize:"none" as const,outline:"none",lineHeight:"1.5",maxHeight:"160px",overflowY:"auto" as const}}/>
-          <button onClick={send} disabled={(!input.trim()&&!pendingImage)||loading||uploading}
-            style={{width:"39px",height:"39px",borderRadius:"50%",background:"#c8a96e",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:(input.trim()||pendingImage)&&!loading&&!uploading?1:0.35}}>
+          <button onClick={send} disabled={(!input.trim()&&pendingFiles.length===0)||loading||uploading}
+            style={{width:"39px",height:"39px",borderRadius:"50%",background:"#c8a96e",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:(input.trim()||pendingFiles.length>0)&&!loading&&!uploading?1:0.35}}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M22 2L11 13" stroke="#111" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
               <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="#111" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
