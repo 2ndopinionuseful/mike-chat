@@ -135,3 +135,47 @@ Let the questions from real data drive the architecture, not the other way
 around. Every real improvement to Mike so far (Houston pricing, Learn Mode,
 Empathy, Warranty Guidance) came from shipping a fix to an observed
 problem, not from architecting ahead of one.
+
+## Schema evolution loop (added 2026-08-03)
+
+Every time a real quote is reviewed, ask two questions:
+
+1. What can Mike learn from this quote that would help future homeowners?
+2. Is there anything in this quote the schema doesn't currently capture?
+
+**The tiebreaker — this is the part that keeps this loop from becoming
+"no abstraction before repetition" violated one field at a time:**
+
+If a quote surfaces something new, capture it in `notes` immediately —
+always, no exceptions, this costs nothing. Only promote it to a first-class
+schema field once the *same* pattern has shown up across a few different
+quotes, not the first time it's seen. A single quote is evidence a field
+*might* eventually be worth adding, not evidence it should be added now.
+
+Fields promoted so far because they repeated across multiple quotes:
+- `tier_info` / proposal tiering (good/better/best) — seen in 3+ quotes
+  before being added
+- Upsell/add-on menus as a structured pattern — seen across the Chino,
+  Rocket Air, and Eco Columbus quotes
+
+Patterns seen only once so far and deliberately left in `notes`, not
+promoted to fields yet: membership-inclusion structure, luxury add-on
+categories (scent devices, UVC lamps), "warranty strategy" as its own
+labeled concept. Revisit if these repeat.
+
+Vendor-stated projections (annual savings, noise reduction, carbon
+reduction, etc.) are marketing claims, not measured outcomes — this is a
+Mike *behavior* rule, not a schema field, since storing the number in a
+field doesn't stop Mike from repeating it as fact. Mike should present
+these as "the contractor projects X," never as a guaranteed result.
+
+Learnings from quotes can go into Mike's actual prompt-level knowledge
+immediately, as a hand-written rule, without waiting for the retrieval
+layer (Phase 3) to exist — same pattern as Houston pricing and warranty
+guidance. Don't let insights sit idle in the corpus if they're ready to
+help users now.
+
+Not every quote needs to teach something new to be worth collecting — most
+quotes in a mature dataset will confirm patterns already known rather than
+reveal new ones, and that's expected: it strengthens confidence in a
+pattern rather than being a missed opportunity.
