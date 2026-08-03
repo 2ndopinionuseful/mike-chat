@@ -1,0 +1,348 @@
+[
+  {
+    "id": "eco-columbus-2026-08-platinum",
+    "raw_document": {
+      "blob_url": null,
+      "source_type": "pdf",
+      "collected_from": "own_house",
+      "collected_by": "self",
+      "date_collected": "2026-08-03"
+    },
+    "structured": {
+      "location": {
+        "metro": "Columbus",
+        "zip": null,
+        "state": "OH",
+        "location_confidence": "confirmed"
+      },
+      "quote_date": null,
+      "quote_expiration_date": "2026-08-17",
+      "contractor": {
+        "name": "Eco (Plumbers, Electricians, HVAC Technicians)",
+        "sales_rep": null
+      },
+      "job_type": "replacement",
+      "equipment": {
+        "system_type": "central_split",
+        "fuel_type": "natural_gas",
+        "manufacturer": "Tempstar",
+        "outdoor_model": "T5A1V36AKAWA",
+        "indoor_model": "F97CMN0601714A",
+        "coil_model": "EVD5X36M17A",
+        "thermostat_model": "SYST0101CW (Ion System Control)",
+        "tonnage": null,
+        "seer2": 21,
+        "eer2": null,
+        "hspf2": null,
+        "afue": 97,
+        "staging": "variable_speed"
+      },
+      "pricing": {
+        "gross_price": 30571.02,
+        "cash_price": 25679.66,
+        "financed_price": null,
+        "incentives": [
+          {"source": "EcoFi Membership Discount", "amount": -3057.10},
+          {"source": "Cash/Card/Check Discount", "amount": -1834.26}
+        ],
+        "net_effective_price": 25679.66,
+        "tax": null,
+        "financing": {
+          "apr": null,
+          "term_months": null,
+          "monthly_payment": null
+        }
+      },
+      "warranty": {
+        "parts_years": 10,
+        "labor_years": 10,
+        "workmanship_years": null,
+        "compressor_years": null,
+        "heat_exchanger": null,
+        "registration_required": null,
+        "registration_window_days": null
+      },
+      "scope": {
+        "included": [
+          "Tempstar Ion 21 variable-speed AC, Ion 98 variable-speed furnace, matching V coil, Ion system control",
+          "2026 Annual EcoFi Advantage Membership (+$340, included/added by default in this tier's retail price)"
+        ],
+        "excluded": [
+          "Duct cleaning (+$770.05 at 40% off, offered as add-on)",
+          "GeneralAire Power Humidifier 18 Gallon (+$1,054.97 at 40% off, add-on)",
+          "Bradford White Infiniti GR tankless water heater w/ recirc (+$6,006.42 at 25% off, add-on)",
+          "Iwave-R residential air purifier (+$888.13 at 40% off, add-on)",
+          "Apco-X Ultra UVC disinfectant lamp system (+$992.73 at 40% off, add-on)",
+          "Nebu whole-home scent device (+$512.73 at 40% off, add-on)",
+          "Mini split add-on (+$6,951.87, flat, same across all 4 tiers)"
+        ]
+      },
+      "tier_info": {
+        "tier_label": "Platinum",
+        "tier_group_id": "eco-columbus-2026-08"
+      },
+      "confidence": "high",
+      "notes": "Vendor-stated benefits: precise temp control, excellent humidity control, $790/yr est. utility savings, 55 dBa outdoor noise, 20% less carbon vs baseline. This is a proposal-software-generated quote (interactive tiered pricing tool with stacked add-on upsells) - useful reference for how modern digital HVAC proposal tools structure tiering and cross-sell. Same $6,951.87 mini-split add-on price appears flat across all 4 tiers, suggesting it's priced independently of the base package rather than as a percentage."
+    }
+  },
+  {
+    "id": "eco-columbus-2026-08-gold",
+    "raw_document": {
+      "blob_url": null,
+      "source_type": "pdf",
+      "collected_from": "own_house",
+      "collected_by": "self",
+      "date_collected": "2026-08-03"
+    },
+    "structured": {
+      "location": {
+        "metro": "Columbus",
+        "zip": null,
+        "state": "OH",
+        "location_confidence": "confirmed"
+      },
+      "quote_date": null,
+      "quote_expiration_date": "2026-08-17",
+      "contractor": {
+        "name": "Eco (Plumbers, Electricians, HVAC Technicians)",
+        "sales_rep": null
+      },
+      "job_type": "replacement",
+      "equipment": {
+        "system_type": "central_split",
+        "fuel_type": "natural_gas",
+        "manufacturer": "Tempstar",
+        "outdoor_model": "T5A8T36AKAWA",
+        "indoor_model": "F97CTN0601716A",
+        "coil_model": "EVD5X36M17A",
+        "thermostat_model": "SYST0101CW (Ion System Control)",
+        "tonnage": null,
+        "seer2": 18,
+        "eer2": null,
+        "hspf2": null,
+        "afue": 97,
+        "staging": "two_stage"
+      },
+      "pricing": {
+        "gross_price": 26597.76,
+        "cash_price": 22342.11,
+        "financed_price": null,
+        "incentives": [
+          {"source": "EcoFi Membership Discount", "amount": -2659.78},
+          {"source": "Cash/Card/Check Discount", "amount": -1595.87}
+        ],
+        "net_effective_price": 22342.11,
+        "tax": null,
+        "financing": {
+          "apr": null,
+          "term_months": null,
+          "monthly_payment": null
+        }
+      },
+      "warranty": {
+        "parts_years": 10,
+        "labor_years": 10,
+        "workmanship_years": null,
+        "compressor_years": null,
+        "heat_exchanger": null,
+        "registration_required": null,
+        "registration_window_days": null
+      },
+      "scope": {
+        "included": [
+          "Tempstar Ion 18 two-stage AC, Ion 97 two-stage furnace, matching V coil, Ion system control",
+          "2026 Annual EcoFi Advantage Membership (+$340, included/added by default)"
+        ],
+        "excluded": [
+          "Duct cleaning (+$962.57 at 25% off, add-on)",
+          "GeneralAire Power Humidifier 18 Gallon (+$1,318.72 at 25% off, add-on)",
+          "Bradford White Infiniti GR tankless water heater (+$6,407.49 at 20% off, add-on)",
+          "Iwave-R residential air purifier (+$1,110.16 at 25% off, add-on)",
+          "Apco-X Ultra UVC disinfectant lamp system (+$1,240.91 at 25% off, add-on)",
+          "Nebu whole-home scent device (+$640.91 at 25% off, add-on)",
+          "Mini split add-on (+$6,951.87 flat, add-on)"
+        ]
+      },
+      "tier_info": {
+        "tier_label": "Gold",
+        "tier_group_id": "eco-columbus-2026-08"
+      },
+      "confidence": "high",
+      "notes": "Vendor-stated: moderate temp control, very good humidity control, $763/yr est. savings, 67 dBa outdoor noise, 20% less carbon. Marked 'POPULAR' in the proposal UI - worth noting contractors often flag the second-highest tier as default/popular, a common anchoring tactic worth being aware of when evaluating why a tier is marked that way."
+    }
+  },
+  {
+    "id": "eco-columbus-2026-08-silver",
+    "raw_document": {
+      "blob_url": null,
+      "source_type": "pdf",
+      "collected_from": "own_house",
+      "collected_by": "self",
+      "date_collected": "2026-08-03"
+    },
+    "structured": {
+      "location": {
+        "metro": "Columbus",
+        "zip": null,
+        "state": "OH",
+        "location_confidence": "confirmed"
+      },
+      "quote_date": null,
+      "quote_expiration_date": "2026-08-17",
+      "contractor": {
+        "name": "Eco (Plumbers, Electricians, HVAC Technicians)",
+        "sales_rep": null
+      },
+      "job_type": "replacement",
+      "equipment": {
+        "system_type": "central_split",
+        "fuel_type": "natural_gas",
+        "manufacturer": "Tempstar",
+        "outdoor_model": "N5A8T36AKAWA",
+        "indoor_model": "F97VTN0601716A",
+        "coil_model": "EVD5X36M17A",
+        "thermostat_model": null,
+        "tonnage": null,
+        "seer2": 17,
+        "eer2": null,
+        "hspf2": null,
+        "afue": 97,
+        "staging": "two_stage"
+      },
+      "pricing": {
+        "gross_price": 22162.47,
+        "cash_price": 18616.47,
+        "financed_price": null,
+        "incentives": [
+          {"source": "EcoFi Membership Discount", "amount": -2216.25},
+          {"source": "Cash/Card/Check Discount", "amount": -1329.75}
+        ],
+        "net_effective_price": 18616.47,
+        "tax": null,
+        "financing": {
+          "apr": null,
+          "term_months": null,
+          "monthly_payment": null
+        }
+      },
+      "warranty": {
+        "parts_years": 10,
+        "labor_years": 10,
+        "workmanship_years": null,
+        "compressor_years": null,
+        "heat_exchanger": null,
+        "registration_required": null,
+        "registration_window_days": null
+      },
+      "scope": {
+        "included": [
+          "Tempstar Performance 18 two-stage AC (labeled '18' but SEER2 spec listed as 'up to 17' - naming/spec mismatch worth flagging), Tempstar QuietComfort 97 two-stage furnace, matching V coil",
+          "2026 Annual EcoFi Advantage Membership (+$340, included/added by default)"
+        ],
+        "excluded": [
+          "No system control/smart thermostat listed for this tier (Platinum and Gold include Ion System Control, Silver does not)",
+          "Duct cleaning (+$1,090.91 at 15% off, add-on)",
+          "GeneralAire Power Humidifier 18 Gallon (+$1,494.12 at 15% off, add-on)",
+          "Bradford White Infiniti GR tankless water heater (+$6,807.49 at 15% off, add-on)",
+          "Iwave-R residential air purifier (+$1,258.18 at 15% off, add-on)",
+          "Apco-X Ultra UVC disinfectant lamp system (+$1,406.36 at 15% off, add-on)",
+          "Nebu whole-home scent device (+$726.36 at 15% off, add-on)",
+          "Mini split add-on (+$6,951.87 flat, add-on)"
+        ]
+      },
+      "tier_info": {
+        "tier_label": "Silver",
+        "tier_group_id": "eco-columbus-2026-08"
+      },
+      "confidence": "high",
+      "notes": "Model name says 'Performance 18 Air Conditioner' but the listed SEER2 spec is 'up to 17', not 18 - a naming-vs-spec discrepancy worth flagging as a pattern to watch for generally (product line names don't always match the specific unit's rated SEER2)."
+    }
+  },
+  {
+    "id": "eco-columbus-2026-08-bronze",
+    "raw_document": {
+      "blob_url": null,
+      "source_type": "pdf",
+      "collected_from": "own_house",
+      "collected_by": "self",
+      "date_collected": "2026-08-03"
+    },
+    "structured": {
+      "location": {
+        "metro": "Columbus",
+        "zip": null,
+        "state": "OH",
+        "location_confidence": "confirmed"
+      },
+      "quote_date": null,
+      "quote_expiration_date": "2026-08-17",
+      "contractor": {
+        "name": "Eco (Plumbers, Electricians, HVAC Technicians)",
+        "sales_rep": null
+      },
+      "job_type": "replacement",
+      "equipment": {
+        "system_type": "central_split",
+        "fuel_type": "natural_gas",
+        "manufacturer": "Tempstar",
+        "outdoor_model": "N5A4S30AKANA",
+        "indoor_model": "N96MSN0601716A",
+        "coil_model": "EVD5X30M17A",
+        "thermostat_model": null,
+        "tonnage": null,
+        "seer2": 13.4,
+        "eer2": null,
+        "hspf2": null,
+        "afue": 96,
+        "staging": "single_stage"
+      },
+      "pricing": {
+        "gross_price": 15162.46,
+        "cash_price": 12736.46,
+        "financed_price": null,
+        "incentives": [
+          {"source": "EcoFi Membership Discount", "amount": -1516.25},
+          {"source": "Cash/Card/Check Discount", "amount": -909.75}
+        ],
+        "net_effective_price": 12736.46,
+        "tax": null,
+        "financing": {
+          "apr": null,
+          "term_months": null,
+          "monthly_payment": null
+        }
+      },
+      "warranty": {
+        "parts_years": 10,
+        "labor_years": 1,
+        "workmanship_years": null,
+        "compressor_years": null,
+        "heat_exchanger": null,
+        "registration_required": null,
+        "registration_window_days": null
+      },
+      "scope": {
+        "included": [
+          "Tempstar Performance N5A4S single-stage AC, Performance 96 single-stage furnace, coil",
+          "2026 Annual EcoFi Advantage Membership (+$340, included/added by default)"
+        ],
+        "excluded": [
+          "No system control/smart thermostat listed",
+          "Duct cleaning (+$1,283.42, full price, no discount shown unlike other 3 tiers)",
+          "GeneralAire Power Humidifier 18 Gallon (+$1,758.29, full price, no discount shown)",
+          "Bradford White Infiniti GR tankless water heater (+$7,208.56 at only 10% off - smallest discount of any tier)",
+          "Iwave-R residential air purifier (+$1,480.21, full price, no discount shown)",
+          "Apco-X Ultra UVC disinfectant lamp system (+$1,654.55, full price, no discount shown)",
+          "Nebu whole-home scent device (+$854.55, full price, no discount shown)",
+          "Mini split add-on (+$6,951.87 flat, add-on)"
+        ]
+      },
+      "tier_info": {
+        "tier_label": "Bronze",
+        "tier_group_id": "eco-columbus-2026-08"
+      },
+      "confidence": "high",
+      "notes": "IMPORTANT: Labor warranty drops to 1 year on this tier vs 10 years on Platinum/Gold/Silver - a cliff, not a gradual step-down, and easy to miss since the parts warranty stays at 10yr across all tiers. ALSO IMPORTANT: coil model changes to EVD5X30M17A here vs EVD5X36M17A on the other three tiers - the '30' vs '36' likely indicates a different nominal tonnage/capacity, meaning Bronze may not be sized to the same load calc as the other tiers, not just lower-efficiency equipment at equal capacity. Worth confirming directly with the contractor whether Bronze was sized independently. Add-on items also lose their percentage discounts entirely at this tier (full price on humidifier, air purifier, UVC system, scent device) - the upsell menu itself gets less generous as the base tier gets cheaper."
+    }
+  }
+]
