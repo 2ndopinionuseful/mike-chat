@@ -560,22 +560,6 @@ export default function Home() {
           <div ref={bottomRef}/>
         </div>
 
-        {hasReport && lastReport && (
-          <div style={{padding:"10px 14px",borderTop:"1px solid #1e1e1e",background:"#111"}}>
-            <button
-              onClick={() => downloadReport(getDisplayText(lastReport.content))}
-              style={{width:"100%",background:"#1a1a1a",border:"1px solid #c8a96e",color:"#c8a96e",fontSize:"13px",padding:"9px 14px",borderRadius:"8px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",fontFamily:"Georgia,serif"}}
-            >
-              Download Report (.docx)
-            </button>
-            <FeedbackWidget
-              revisionCode={getRevisionCode(getDisplayText(lastReport.content))}
-              sessionId={sessionId}
-              isTestMode={isTestMode}
-            />
-          </div>
-        )}
-
         {uploading && (
           <div style={{padding:"8px 14px",borderTop:"1px solid #1e1e1e",display:"flex",alignItems:"center",gap:"8px"}}>
             <div style={{width:"16px",height:"16px",border:"2px solid #333",borderTopColor:"#c8a96e",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
@@ -629,6 +613,22 @@ export default function Home() {
             </svg>
           </button>
         </div>
+
+        {hasReport && lastReport && (
+          <div style={{padding:"10px 14px",borderTop:"1px solid #1e1e1e",background:"#111"}}>
+            <button
+              onClick={() => downloadReport(getDisplayText(lastReport.content))}
+              style={{width:"100%",background:"#1a1a1a",border:"1px solid #c8a96e",color:"#c8a96e",fontSize:"13px",padding:"9px 14px",borderRadius:"8px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",fontFamily:"Georgia,serif"}}
+            >
+              Download Report (.docx)
+            </button>
+            <FeedbackWidget
+              revisionCode={getRevisionCode(getDisplayText(lastReport.content))}
+              sessionId={sessionId}
+              isTestMode={isTestMode}
+            />
+          </div>
+        )}
 
         <div style={{textAlign:"center" as const,color:"#999",fontSize:"11px",padding:"8px",letterSpacing:".04em",borderTop:"1px solid #222"}}>
           HVAC only - No contractor ties - Your call
