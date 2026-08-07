@@ -338,7 +338,13 @@ export default function Home() {
               : "Here's what I've got. What do you think?",
           };
       apiContent = [...fileBlocks, textBlock];
-      const displayImages = pendingFiles.filter(f => !f.isPdf).map(f => f.previewUrl);
+      // Use blobUrl (the real, persistent Vercel Blob storage URL), not
+      // previewUrl (a browser-local blob: object URL from
+      // URL.createObjectURL, which only exists in this tab's memory and
+      // goes dead the moment the page reloads or the session is restored
+      // from /api/session - that mismatch was causing broken-image icons
+      // on any image sent in a prior page load).
+      const displayImages = pendingFiles.filter(f => !f.isPdf).map(f => f.blobUrl);
       userMessage = { role: "user", content: apiContent, displayImages: displayImages.length ? displayImages : undefined };
     } else {
       userMessage = { role: "user", content: input.trim() };
