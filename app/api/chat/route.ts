@@ -757,15 +757,20 @@ const OFFER_EVALUATION_CLAUSES: Record<OfferIntent, string> = {
   warranty: "what's actually covered, what's excluded, and how it compares with the rest of the proposal",
 };
 
-// avoidOpener/avoidFactsSentence let the delayed offer explicitly steer
-// away from whatever the preceding rapport turn already said (see
-// PendingOffer.rapportOpener/rapportFactsSentence) - this is the actual
-// fix, not just "more variants and hope for the best": the two turns are
-// guaranteed non-identical whenever the pools have more than one option
-// left after excluding what was already used.
-function buildOfferResponse(offerIntent: OfferIntent, facts?: KeyFacts | null, isMultiTier?: boolean, isMultiDocument?: boolean, avoidOpener?: string, avoidFactsSentence?: string): string {
+// avoidOpener still varies the greeting for warmth (that's not "restating
+// a fact", just a different way to say hello). suppressFactsSentence is
+// the actual fix for the real complaint: when the offer immediately
+// follows a rapport turn that already acknowledged the upload (multi-tier,
+// multi-document, or even a single document's specific facts), restating
+// that same underlying fact in DIFFERENT WORDS on the very next turn still
+// reads as padding - a user notices "you told me this already" even when
+// no two sentences are literally identical. The fix isn't smarter
+// variation, it's saying it once. When true, the offer skips straight from
+// the opener to the evaluation clause (new, forward-looking content) and
+// the ask - no re-acknowledgment of what was already established.
+function buildOfferResponse(offerIntent: OfferIntent, facts?: KeyFacts | null, isMultiTier?: boolean, isMultiDocument?: boolean, avoidOpener?: string, suppressFactsSentence?: boolean): string {
   const opener = pickWarmOpener(avoidOpener);
-  const factsSentence = buildKeyFactsSentence(facts, isMultiTier, isMultiDocument, avoidFactsSentence);
+  const factsSentence = suppressFactsSentence ? "" : buildKeyFactsSentence(facts, isMultiTier, isMultiDocument);
   const evaluationClause = OFFER_EVALUATION_CLAUSES[offerIntent];
 
   const parts = [
@@ -1793,7 +1798,7 @@ export async function POST(req: NextRequest) {
           pending?.isMultiTier ?? false,
           pending?.isMultiDocument ?? false,
           pending?.rapportOpener,
-          pending?.rapportFactsSentence
+          true // suppressFactsSentence - rapport turn already acknowledged the upload
         );
 
         await setReportWorkflowState(sessionId, "offered");
@@ -1827,7 +1832,7 @@ export async function POST(req: NextRequest) {
           pending?.isMultiTier ?? false,
           pending?.isMultiDocument ?? false,
           pending?.rapportOpener,
-          pending?.rapportFactsSentence
+          true // suppressFactsSentence - rapport turn already acknowledged the upload
         );
 
         await setReportWorkflowState(sessionId, "offered");
@@ -1864,7 +1869,7 @@ export async function POST(req: NextRequest) {
         // going fact-less or re-risking a garbled sentence on this turn.
         const offerIntent = detectOfferIntent(lastUserText);
         const savedState = await getOfferKeyFacts(sessionId);
-        const offerResponse = buildOfferResponse(offerIntent, savedState.facts, savedState.isMultiTier, savedState.isMultiDocument);
+        const offerResponse = buildOfferResponse(offerIntent, savedState.facts, savedState.isMultiTier, savedState.isMultiDocument, undefined, true);
         await setOfferIntentUpgraded(sessionId, true);
         console.log(JSON.stringify({
           event: "report_offer_intent_upgraded",
