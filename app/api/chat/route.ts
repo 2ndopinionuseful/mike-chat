@@ -445,11 +445,24 @@ async function setReportWorkflowState(sessionId: string, state: ReportWorkflowSt
 // what the rapport message already referenced. PendingOffer reuses
 // KeyFacts/OfferIntent, both declared elsewhere in this file - forward
 // references are fine within one module.
+//
+// rapportOpener/rapportFactsSentence record EXACTLY what text the rapport
+// turn used, so the offer turn (buildOfferResponse) can explicitly avoid
+// repeating them verbatim. This matters most for isMultiTier/isMultiDocument
+// cases, where the facts sentence is a small fixed set of variants (not
+// derived from real per-message data) - without tracking what was already
+// said, the SAME sentence could easily fire on both turns back to back,
+// which is exactly what happened before this fix (a real observed repeat:
+// "Got it - thanks for uploading this. I can see you've shared a couple of
+// different proposals here." appeared verbatim on both the rapport turn
+// and the offer turn).
 type PendingOffer = {
   offerIntent: OfferIntent;
   facts: KeyFacts | null;
   isMultiTier: boolean;
   isMultiDocument: boolean;
+  rapportOpener: string;
+  rapportFactsSentence: string;
 };
 
 async function getPendingOffer(sessionId: string): Promise<PendingOffer | null> {
@@ -653,8 +666,40 @@ const WARM_OPENERS = [
   "Got it - thanks for uploading this.",
 ];
 
-function pickWarmOpener(): string {
-  return WARM_OPENERS[Math.floor(Math.random() * WARM_OPENERS.length)];
+// avoid: if provided, the picker excludes that exact string from the pool
+// before picking (falls back to the full pool if that would leave nothing
+// to choose from). Used to guarantee the rapport turn and the delayed
+// offer turn don't open with the identical sentence twice in a row -
+// randomness alone doesn't guarantee that when the pool is only 3 items.
+function pickWarmOpener(avoid?: string): string {
+  const pool = avoid ? WARM_OPENERS.filter((o) => o !== avoid) : WARM_OPENERS;
+  const options = pool.length > 0 ? pool : WARM_OPENERS;
+  return options[Math.floor(Math.random() * options.length)];
+}
+
+// Multiple variants for the multi-tier and multi-document fallback
+// sentences, same reasoning as WARM_OPENERS - these are FIXED, non-model-
+// authored strings (still zero leak risk), but a single static string
+// guarantees a repeat across the rapport and offer turns since both turns
+// use the same isMultiTier/isMultiDocument flag by design. This was a
+// real observed bug: with only one fixed string, "I can see you've shared
+// a couple of different proposals here." appeared verbatim on both turns.
+const MULTI_TIER_SENTENCES = [
+  "I can see this is a multi-tier proposal with a few different equipment options.",
+  "I can see there are several different tiers laid out in this proposal.",
+  "I can see this proposal lays out a few different equipment options to choose from.",
+];
+
+const MULTI_DOCUMENT_SENTENCES = [
+  "I can see you've shared a couple of different proposals here.",
+  "I can see there are a couple of separate proposals in what you sent over.",
+  "I can see you've got more than one proposal here to look at.",
+];
+
+function pickVariant(pool: string[], avoid?: string): string {
+  const filtered = avoid ? pool.filter((s) => s !== avoid) : pool;
+  const options = filtered.length > 0 ? filtered : pool;
+  return options[Math.floor(Math.random() * options.length)];
 }
 
 // Builds "I can see this is a 5-ton Lennox system, priced at $17,052."
@@ -680,12 +725,17 @@ function pickWarmOpener(): string {
 // only System system"). Rather than try to reconcile which tier's facts
 // belong in one sentence, multi-tier documents get an honest, generic
 // acknowledgment instead.
-function buildKeyFactsSentence(facts: KeyFacts | null | undefined, isMultiTier?: boolean, isMultiDocument?: boolean): string {
+//
+// avoid: same anti-repetition mechanism as pickWarmOpener - excludes one
+// specific previously-used sentence from the multi-tier/multi-document
+// variant pools. Has no effect on the single-document fact-based sentence,
+// since that one is already naturally varied by the real extracted facts.
+function buildKeyFactsSentence(facts: KeyFacts | null | undefined, isMultiTier?: boolean, isMultiDocument?: boolean, avoid?: string): string {
   if (isMultiDocument) {
-    return "I can see you've shared a couple of different proposals here.";
+    return pickVariant(MULTI_DOCUMENT_SENTENCES, avoid);
   }
   if (isMultiTier) {
-    return "I can see this is a multi-tier proposal with a few different equipment options.";
+    return pickVariant(MULTI_TIER_SENTENCES, avoid);
   }
   if (!facts) return "";
   const descParts = [facts.tonnage ? `${facts.tonnage}-ton` : null, facts.brand, facts.equipment_type].filter(Boolean);
@@ -707,9 +757,15 @@ const OFFER_EVALUATION_CLAUSES: Record<OfferIntent, string> = {
   warranty: "what's actually covered, what's excluded, and how it compares with the rest of the proposal",
 };
 
-function buildOfferResponse(offerIntent: OfferIntent, facts?: KeyFacts | null, isMultiTier?: boolean, isMultiDocument?: boolean): string {
-  const opener = pickWarmOpener();
-  const factsSentence = buildKeyFactsSentence(facts, isMultiTier, isMultiDocument);
+// avoidOpener/avoidFactsSentence let the delayed offer explicitly steer
+// away from whatever the preceding rapport turn already said (see
+// PendingOffer.rapportOpener/rapportFactsSentence) - this is the actual
+// fix, not just "more variants and hope for the best": the two turns are
+// guaranteed non-identical whenever the pools have more than one option
+// left after excluding what was already used.
+function buildOfferResponse(offerIntent: OfferIntent, facts?: KeyFacts | null, isMultiTier?: boolean, isMultiDocument?: boolean, avoidOpener?: string, avoidFactsSentence?: string): string {
+  const opener = pickWarmOpener(avoidOpener);
+  const factsSentence = buildKeyFactsSentence(facts, isMultiTier, isMultiDocument, avoidFactsSentence);
   const evaluationClause = OFFER_EVALUATION_CLAUSES[offerIntent];
 
   const parts = [
@@ -760,13 +816,17 @@ function pickRapportQuestion(offerIntent: OfferIntent): string {
   return options[Math.floor(Math.random() * options.length)];
 }
 
-function buildRapportResponse(offerIntent: OfferIntent, facts?: KeyFacts | null, isMultiTier?: boolean, isMultiDocument?: boolean): string {
+// Returns the full text PLUS the opener/factsSentence it actually picked,
+// so the caller can persist them (PendingOffer.rapportOpener/
+// rapportFactsSentence) and pass them back into buildOfferResponse's
+// avoid params one turn later - the actual anti-repetition mechanism.
+function buildRapportResponse(offerIntent: OfferIntent, facts?: KeyFacts | null, isMultiTier?: boolean, isMultiDocument?: boolean): { text: string; opener: string; factsSentence: string } {
   const opener = pickWarmOpener();
   const factsSentence = buildKeyFactsSentence(facts, isMultiTier, isMultiDocument);
   const question = pickRapportQuestion(offerIntent);
 
   const parts = [opener, factsSentence, question].filter(Boolean);
-  return parts.join(" ");
+  return { text: parts.join(" "), opener, factsSentence };
 }
 
 // Routes an inspected attachment to one of four handling paths, based on
@@ -1634,7 +1694,14 @@ export async function POST(req: NextRequest) {
           const rapportResponse = buildRapportResponse(offerIntent, facts, isMultiTier, isMultiDocument);
 
           await setReportWorkflowState(sessionId, "rapport_pending");
-          await setPendingOffer(sessionId, { offerIntent, facts, isMultiTier, isMultiDocument });
+          await setPendingOffer(sessionId, {
+            offerIntent,
+            facts,
+            isMultiTier,
+            isMultiDocument,
+            rapportOpener: rapportResponse.opener,
+            rapportFactsSentence: rapportResponse.factsSentence,
+          });
           console.log(JSON.stringify({
             event: "report_rapport_triggered",
             sessionId,
@@ -1644,7 +1711,7 @@ export async function POST(req: NextRequest) {
             isMultiTier,
             offerIntent,
           }));
-          return NextResponse.json({ reply: rapportResponse, sessionId });
+          return NextResponse.json({ reply: rapportResponse.text, sessionId });
         }
         // route === "workmanship" or "neutral": fall through to the normal
         // model call below untouched. For "workmanship", SYSTEM_PROMPT's
@@ -1677,8 +1744,15 @@ export async function POST(req: NextRequest) {
             offerIntent,
           }));
           await setReportWorkflowState(sessionId, "rapport_pending");
-          await setPendingOffer(sessionId, { offerIntent, facts: null, isMultiTier: false, isMultiDocument: false });
-          return NextResponse.json({ reply: rapportResponse, sessionId });
+          await setPendingOffer(sessionId, {
+            offerIntent,
+            facts: null,
+            isMultiTier: false,
+            isMultiDocument: false,
+            rapportOpener: rapportResponse.opener,
+            rapportFactsSentence: rapportResponse.factsSentence,
+          });
+          return NextResponse.json({ reply: rapportResponse.text, sessionId });
         }
       }
       // No candidate signal, or classifier/inspection didn't trigger a gate
@@ -1713,7 +1787,14 @@ export async function POST(req: NextRequest) {
         // actual use case, so fire the offer now with the refined intent
         // rather than treating it as a question to defer past.
         const refinedIntent = detectOfferIntent(lastUserText);
-        const offerResponse = buildOfferResponse(refinedIntent, pending?.facts ?? null, pending?.isMultiTier ?? false, pending?.isMultiDocument ?? false);
+        const offerResponse = buildOfferResponse(
+          refinedIntent,
+          pending?.facts ?? null,
+          pending?.isMultiTier ?? false,
+          pending?.isMultiDocument ?? false,
+          pending?.rapportOpener,
+          pending?.rapportFactsSentence
+        );
 
         await setReportWorkflowState(sessionId, "offered");
         await setOfferKeyFacts(sessionId, { facts: pending?.facts ?? null, isMultiTier: pending?.isMultiTier ?? false, isMultiDocument: pending?.isMultiDocument ?? false });
@@ -1740,7 +1821,14 @@ export async function POST(req: NextRequest) {
         // Generic reply - not a decline, not a clarifying question, not a
         // genuine question. Fire the offer now with the originally-stored
         // intent/facts, per the fixed one-turn-delay design.
-        const offerResponse = buildOfferResponse(pending?.offerIntent ?? "fairness", pending?.facts ?? null, pending?.isMultiTier ?? false, pending?.isMultiDocument ?? false);
+        const offerResponse = buildOfferResponse(
+          pending?.offerIntent ?? "fairness",
+          pending?.facts ?? null,
+          pending?.isMultiTier ?? false,
+          pending?.isMultiDocument ?? false,
+          pending?.rapportOpener,
+          pending?.rapportFactsSentence
+        );
 
         await setReportWorkflowState(sessionId, "offered");
         await setOfferKeyFacts(sessionId, { facts: pending?.facts ?? null, isMultiTier: pending?.isMultiTier ?? false, isMultiDocument: pending?.isMultiDocument ?? false });
