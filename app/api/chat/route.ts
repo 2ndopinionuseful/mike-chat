@@ -239,6 +239,16 @@ const SYSTEM_PROMPT = [
   "",
   "When a user shares a multi-tier proposal (Good/Better/Best, Bronze/Silver/Gold/Platinum, or similar), actively check for and flag these patterns rather than waiting to be asked: whether the tier labels actually match the equipment specs in the order implied - labels don't always track price or quality order; whether warranty terms, especially labor warranty, drop sharply on a lower tier rather than stepping down gradually, since a warranty cliff is a bigger deal than the tier's other differences suggest; whether equipment capacity (tonnage, coil model) stays consistent across tiers, since a cheaper tier is sometimes a differently-sized system rather than just lower-efficiency equipment at the same size; and how add-on/upsell pricing and discounts change tier to tier.",
   "",
+  "WORKMANSHIP PHOTO REVIEW",
+  "",
+  "Some homeowners upload photos of an installed or partially-installed system - not a quote or proposal - asking whether the installation itself looks right. This is a genuinely different question than pricing or scope evaluation, and it's free and unlimited to discuss: it isn't the personalized purchase-decision judgment the report exists to sell, since there's no decision being evaluated here, just an observation about work already done.",
+  "",
+  "Open the same way you would for any upload: a brief warm acknowledgment that shows you actually looked, naming something specific and real you can see (brand, equipment type, general setup) - not a generic 'thanks for sharing.' Then walk through what's visible against what's normal, organized around whatever is actually relevant to the photos rather than mechanically listing every category every time: duct transitions and sealing, condensate drain routing and slope, refrigerant line insulation (if visible), electrical routing and connections, clearances around the unit, and support/mounting. Call out anything that looks unusual, incomplete, or worth asking the installer about - and just as importantly, say plainly when something looks fine, so the homeowner isn't left assuming everything you didn't mention is a problem.",
+  "",
+  "Stay within what a photo can actually show. Many things that matter for installation quality - refrigerant charge, static pressure, airflow, electrical connections inside sealed panels - aren't visible in a photo at all, and saying so plainly is more honest than staying silent about the limitation. Frame findings as 'worth asking about' rather than definitive verdicts, since you're reading a photo, not doing an in-person inspection.",
+  "",
+  "If it turns out the homeowner actually meant to upload a written quote or proposal instead, say so plainly and invite them to send that over - don't guess or force the conversation toward a report offer based on photos alone.",
+  "",
   "SUPPORT / PURCHASE REQUESTS",
   "",
   "If someone asks about refunds, order status, billing, 'is this real,' or wants to talk to a human - this is not a scope violation and it has a real answer. Don't say 'I don't have access to that.'",
@@ -440,6 +450,31 @@ async function setOfferIntentUpgraded(sessionId: string, value: boolean): Promis
   }
 }
 
+// Persists the key facts extracted at the moment the initial offer fires,
+// so that if the user's very next message clarifies intent (triggering the
+// offer_intent_upgraded path above), the upgraded offer can still reference
+// the same real facts instead of going fact-less on that turn. KeyFacts is
+// declared further down in this file (with the rest of the offer-building
+// logic) - TypeScript resolves type references across the whole module
+// regardless of declaration order, so this forward reference is fine.
+async function getOfferKeyFacts(sessionId: string): Promise<KeyFacts | null> {
+  try {
+    const stored = await redis.get("offer_key_facts:" + sessionId);
+    return stored ? (stored as KeyFacts) : null;
+  } catch (e) {
+    console.error("Offer key facts read failed (defaulting to null):", e);
+    return null;
+  }
+}
+
+async function setOfferKeyFacts(sessionId: string, facts: KeyFacts | null): Promise<void> {
+  try {
+    await redis.set("offer_key_facts:" + sessionId, JSON.stringify(facts || {}), { ex: 60 * 60 * 24 * 7 });
+  } catch (e) {
+    console.error("Offer key facts write failed:", e);
+  }
+}
+
 // Cheap, deterministic, no API call. Only escalate to the (paid, slower)
 // classifier call when there's a real chance this turn contains report-level
 // information - ordinary educational chat should never reach the classifier
@@ -501,7 +536,7 @@ function isDeclineReply(text: string): boolean {
 
 // ---- Intent-specific report-offer wording ----
 //
-// Every FIXED_REPORT_OFFER_RESPONSES variant is hardcoded and deterministic,
+// buildOfferResponse (below) assembles every offer from fixed pieces -
 // same reasoning as the original single fixed response this replaces: no
 // model call happens before the offer, so there is no risk of the analysis
 // leaking ahead of it. detectOfferIntent is pure string matching against the
@@ -533,29 +568,249 @@ function detectOfferIntent(text: string): OfferIntent {
   return "fairness";
 }
 
-// Shape for every variant: warm acknowledgment -> reassurance -> what Mike
-// will examine -> the offer. Warmth comes from explaining what gets
-// evaluated, never from flattering the user's prior decisions (that reads
-// as persuasion technique, not genuine helpfulness) and never from
-// revealing any quote-specific finding, ranking, or verdict - all of that
-// stays inside the report, unlocked only after acceptance.
-const FIXED_REPORT_OFFER_RESPONSES: Record<OfferIntent, string> = {
-  comparison: `Absolutely - I can help you make sense of the two proposals. HVAC quotes can look similar on the surface while differing quite a bit in equipment, scope, warranties, and long-term value.
-
-I'll compare them side by side and walk through what actually matters in the full Second Opinion Report. It's free during early access. Want me to generate it now?`,
-
-  fairness: `Absolutely - I can help you understand whether this quote makes sense. The important part isn't just the price - it's also the equipment, installation scope, warranties, exclusions, and anything that could cost more later.
-
-I'll review all of that in the full Second Opinion Report. It's free during early access. Want me to generate it now?`,
-
-  repair_vs_replace: `Absolutely - I can help you think through repair versus replacement. The right call usually comes down to more than age alone - cost, remaining system life, efficiency, and what could go wrong next all factor in.
-
-I'll weigh all of that and give you a clear read in the full Second Opinion Report. It's free during early access. Want me to generate it now?`,
-
-  warranty: `Absolutely - I can help you understand what this warranty actually protects. Coverage often looks more complete on paper than it turns out to be once you check exclusions, terms, and what's labor versus parts.
-
-I'll break that down clearly in the full Second Opinion Report. It's free during early access. Want me to generate it now?`,
+// ---- Warm, fact-grounded offer construction ----
+//
+// The full offer response is now ASSEMBLED FROM PIECES, none of which are
+// model-authored:
+//   1. A warm opener, picked from a small fixed list (still deterministic -
+//      randomizing among fixed strings is not the same risk as letting the
+//      model write free text; none of these strings can editorialize).
+//   2. A facts sentence, built by slotting extracted key_facts (brand,
+//      equipment type, tonnage, price) into a fixed template. The facts
+//      themselves come from the classifier's structured JSON output, never
+//      from free model prose - a JSON string field can't hedge, verdict,
+//      or drift into analysis the way an open-ended sentence could.
+//   3. A fixed evaluation clause naming what the report covers, keyed by
+//      OfferIntent (same four categories as before).
+//   4. The fixed report-offer closing line.
+// This preserves the original design goal exactly (no model call before
+// the offer, so no leak risk) while making the first sentence concrete and
+// warm instead of generic, per the "acknowledge -> proof -> evaluate ->
+// offer" sequence.
+type KeyFacts = {
+  brand?: string | null;
+  equipment_type?: string | null;
+  tonnage?: string | null;
+  price?: string | null;
 };
+
+const WARM_OPENERS = [
+  "Thanks for sending this over - I took a look.",
+  "Absolutely - thanks for sharing it.",
+  "Got it - thanks for uploading this.",
+];
+
+function pickWarmOpener(): string {
+  return WARM_OPENERS[Math.floor(Math.random() * WARM_OPENERS.length)];
+}
+
+// Builds "I can see this is a 5-ton Lennox system, priced at $17,052."
+// Degrades gracefully as fields go missing - never invents a fact that
+// wasn't actually extracted, and returns "" (dropped entirely) if nothing
+// usable came back at all, rather than forcing an awkward empty sentence.
+function buildKeyFactsSentence(facts: KeyFacts | null | undefined): string {
+  if (!facts) return "";
+  const descParts = [facts.tonnage ? `${facts.tonnage}-ton` : null, facts.brand, facts.equipment_type].filter(Boolean);
+  const desc = descParts.join(" ").trim();
+
+  if (desc && facts.price) return `I can see this is a ${desc} system, priced at ${facts.price}.`;
+  if (desc) return `I can see this is a ${desc} system.`;
+  if (facts.price) return `I can see this is priced at ${facts.price}.`;
+  return "";
+}
+
+// Same four categories as before, but now just the "what gets evaluated"
+// clause rather than a full pre-written paragraph - the surrounding warmth
+// and structure is assembled by buildOfferResponse below.
+const OFFER_EVALUATION_CLAUSES: Record<OfferIntent, string> = {
+  comparison: "equipment, pricing, warranties, scope, and what may be missing",
+  fairness: "the equipment, installation scope, warranties, exclusions, and anything that could cost more later",
+  repair_vs_replace: "cost, remaining system life, efficiency, and what could go wrong next",
+  warranty: "what's actually covered, what's excluded, and how it compares with the rest of the proposal",
+};
+
+function buildOfferResponse(offerIntent: OfferIntent, facts?: KeyFacts | null): string {
+  const opener = pickWarmOpener();
+  const factsSentence = buildKeyFactsSentence(facts);
+  const evaluationClause = OFFER_EVALUATION_CLAUSES[offerIntent];
+
+  const parts = [
+    opener,
+    factsSentence,
+    `There are a few things worth evaluating together here - ${evaluationClause}.`,
+    `I can go through all of that in the full Second Opinion Report, which is free during early access. Want me to generate it now?`,
+  ].filter(Boolean);
+
+  return parts.join(" ");
+}
+
+// Routes an inspected attachment to one of three handling paths, based on
+// document_type + confidence from inspectAttachment (below):
+//   "gated"       - quote_or_proposal / warranty_document / service_invoice,
+//                   confidence not low -> warm acknowledgment + fixed offer
+//   "workmanship" - installation_photos -> bypass the gate entirely, let
+//                   the model handle it normally per the WORKMANSHIP PHOTO
+//                   REVIEW section of SYSTEM_PROMPT
+//   "neutral"     - "other", unrecognized, or low-confidence classification
+//                   on an otherwise-gated type -> don't force either path;
+//                   fall through to a normal model turn with a short note
+//                   so Mike can ask what it is rather than guess
+// A conservative default (falling to "neutral" rather than "gated") is
+// deliberate here: forcing the report offer onto a document Mike couldn't
+// confidently identify would be worse than just asking.
+type AttachmentRoute = "gated" | "workmanship" | "neutral";
+
+function routeForAttachment(documentType: string | null | undefined, confidence: string | null | undefined): AttachmentRoute {
+  if (documentType === "installation_photos") return "workmanship";
+  if (documentType === "quote_or_proposal" || documentType === "warranty_document" || documentType === "service_invoice") {
+    return confidence === "low" ? "neutral" : "gated";
+  }
+  return "neutral";
+}
+
+// ---- Attachment inspection (vision) ----
+//
+// Deliberately SEPARATE from classifyReportOfferTrigger, which stays
+// text-only and cheap for every other turn. This call only runs on turns
+// where the last user message actually has an image/document attached, and
+// it is the ONLY place in this file that sends real attachment bytes to a
+// model ahead of the main conversational turn - flattenForExtraction and
+// its privacy/cost reasoning are UNCHANGED for classifyReportOfferTrigger
+// and extractStructuredData.
+//
+// Scope is intentionally narrow: classify document type, pull four safe
+// HVAC facts, nothing else. No recommendation, no verdict, no pricing
+// judgment - this call has the same "do not analyze" restriction as
+// CLASSIFICATION_PROMPT, just with vision instead of text.
+const INSPECTION_PROMPT = `You inspect an HVAC-related image or document and report ONLY what type of document it is and a few safe factual details. You are not an HVAC advisor and must not evaluate, judge, or recommend anything. Output ONLY valid JSON, nothing else - no preamble, no markdown fences.
+
+{
+  "document_type": "quote_or_proposal" | "warranty_document" | "installation_photos" | "service_invoice" | "other",
+  "key_facts": {
+    "brand": string or null,
+    "equipment_type": string or null,
+    "tonnage": string or null,
+    "price": string or null
+  },
+  "confidence": "high" | "medium" | "low"
+}
+
+document_type guide:
+- "quote_or_proposal": a contractor's written estimate, bid, or sales proposal for new equipment or installation, whether or not it's been priced yet
+- "warranty_document": manufacturer or contractor warranty terms/certificate
+- "installation_photos": photos of installed or partially-installed equipment (condenser, air handler, furnace, ductwork, refrigerant lines, etc.) with no proposal/pricing document visible
+- "service_invoice": a bill or invoice for completed repair/service work already performed
+- "other": anything that doesn't clearly fit the above, including illegible images, unrelated photos, or partial/unclear documents
+
+key_facts rules:
+- Extract ONLY brand, equipment_type, tonnage, and price if clearly and explicitly visible in the image/document itself.
+- Use null for any fact not clearly present - never guess, infer, or estimate a value.
+- NEVER extract or output any personally identifiable information under any circumstance, even if visible: no names, addresses, phone numbers, email addresses, account numbers, or signatures. Leave the relevant field null and do not mention PII elsewhere in the output.
+- price should be the total or headline price if one clearly appears; use null if ambiguous or multiple conflicting prices exist without a clear total.
+
+confidence: your confidence in the document_type classification specifically - "low" if the image is unclear, ambiguous, or could plausibly be more than one type.
+
+Do not include any analysis, opinion, recommendation, or verdict of any kind. Do not describe whether pricing seems fair, whether installation looks correct, or anything evaluative - that is explicitly out of scope for this task.`;
+
+// djb2, non-cryptographic - just needs to be a short, stable, deterministic
+// fingerprint of "which attachment(s) are in this message" so a cached
+// inspection isn't reused for genuinely different content, and a fresh
+// attachment does get inspected. Not a security boundary of any kind.
+function hashAttachmentUrls(urls: string[]): string {
+  const joined = urls.sort().join("|");
+  let hash = 5381;
+  for (let i = 0; i < joined.length; i++) {
+    hash = (hash * 33) ^ joined.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+type AttachmentInspection = {
+  document_type: string | null;
+  key_facts: KeyFacts;
+  confidence: string | null;
+};
+
+async function getAttachmentInspection(sessionId: string, attachmentKey: string): Promise<AttachmentInspection | null> {
+  try {
+    const stored = await redis.get("attachment_inspection:" + sessionId + ":" + attachmentKey);
+    return stored ? (stored as AttachmentInspection) : null;
+  } catch (e) {
+    console.error("Attachment inspection cache read failed (proceeding to re-inspect):", e);
+    return null;
+  }
+}
+
+async function setAttachmentInspection(sessionId: string, attachmentKey: string, result: AttachmentInspection): Promise<void> {
+  try {
+    await redis.set("attachment_inspection:" + sessionId + ":" + attachmentKey, JSON.stringify(result), { ex: 60 * 60 * 24 * 7 });
+  } catch (e) {
+    console.error("Attachment inspection cache write failed:", e);
+  }
+}
+
+// Extracts the image/document content blocks (and any accompanying text)
+// from the triggering user message only - never the full conversation
+// history - to keep this call's cost and data exposure minimal. Returns
+// null if the last user message has no attachment, so callers can check
+// cheaply before ever reaching for the network.
+function getLastUserAttachmentContent(
+  messages: Array<{ role: string; content: unknown }>
+): Array<Record<string, unknown>> | null {
+  const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
+  if (!lastUserMessage || !Array.isArray(lastUserMessage.content)) return null;
+  const content = lastUserMessage.content as Array<Record<string, unknown>>;
+  const hasAttachment = content.some((c) => c.type === "image" || c.type === "document");
+  return hasAttachment ? content : null;
+}
+
+function extractAttachmentUrls(content: Array<Record<string, unknown>>): string[] {
+  return content
+    .filter((c) => c.type === "image" || c.type === "document")
+    .map((c) => {
+      const source = c.source as { url?: string } | undefined;
+      return source?.url || "";
+    })
+    .filter(Boolean);
+}
+
+// Fail-safe by design, same as classifyReportOfferTrigger: any error here
+// returns null, and the caller treats that as routeForAttachment("neutral")
+// - a failed inspection should never crash the turn or force a false gate.
+async function inspectAttachment(
+  sessionId: string,
+  content: Array<Record<string, unknown>>
+): Promise<AttachmentInspection | null> {
+  const urls = extractAttachmentUrls(content);
+  const attachmentKey = urls.length > 0 ? hashAttachmentUrls(urls) : "no_url";
+
+  const cached = await getAttachmentInspection(sessionId, attachmentKey);
+  if (cached) {
+    console.log(JSON.stringify({ event: "attachment_inspection_cache_hit", sessionId, attachmentKey }));
+    return cached;
+  }
+
+  try {
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 400,
+      system: INSPECTION_PROMPT,
+      messages: [{ role: "user", content: content as never }],
+    });
+
+    const block = response.content[0];
+    if (block.type !== "text") return null;
+
+    const cleaned = block.text.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(cleaned) as AttachmentInspection;
+
+    await setAttachmentInspection(sessionId, attachmentKey, parsed);
+    return parsed;
+  } catch (e) {
+    console.error("Attachment inspection failed (fail-safe: treating as neutral):", e);
+    return null;
+  }
+}
 
 // Detects whether a FOLLOW-UP message (sent after the generic/initial offer
 // has already gone out, i.e. workflowState === "offered") clarifies what
@@ -1019,14 +1274,17 @@ export async function POST(req: NextRequest) {
     // hold the boundary even under explicit, named prohibition (see
     // tests/high-info-quote-flow.md for the full history).
     //
-    // The fixed response itself now carries the warmth/rapport-building
-    // (recognition -> empathy -> value explanation -> offer, all in one
-    // deterministic message) - no separate model-authored "warm-up" turn is
-    // needed, which means there's no reopened leakage risk at all. Each of
-    // the four FIXED_REPORT_OFFER_RESPONSES variants is selected by pure
-    // string matching (detectOfferIntent) against the triggering message -
-    // never by the model - so warmth and specificity come with zero
-    // additional leakage risk versus the original single generic response.
+    // The fixed response is assembled by buildOfferResponse from fixed
+    // pieces (warm opener, extracted key facts, evaluation clause, offer
+    // line) - no model-authored customer-facing text happens before
+    // acceptance, so there's no leakage risk. Attachment-bearing turns are
+    // routed through inspectAttachment (vision) first, which determines
+    // document_type and whether real key_facts are available; text-only
+    // turns still use the original cheap classifyReportOfferTrigger with no
+    // facts. Either way, offerIntent (comparison/fairness/repair/warranty)
+    // is pure string matching against the triggering message - never the
+    // model - so warmth and specificity come with zero additional leakage
+    // risk versus the original single generic response.
     //
     // State is explicitly stored per session (not inferred by searching
     // message text for marker phrases). States: not_triggered -> offered ->
@@ -1040,13 +1298,56 @@ export async function POST(req: NextRequest) {
     const workflowState = await getReportWorkflowState(sessionId);
 
     if (workflowState === "not_triggered" && !signals.revisionCode) {
-      // Cheap pre-check first - only spend the classifier's API call on
-      // turns that could plausibly contain report-level information.
-      if (hasReportCandidateSignal(messages)) {
+      const attachmentContent = getLastUserAttachmentContent(messages);
+
+      if (attachmentContent) {
+        // Attachment path: inspect with vision (cached per attachment so a
+        // retry or re-render doesn't re-spend the call), then route on the
+        // result. This never touches classifyReportOfferTrigger or
+        // flattenForExtraction - completely separate call, separate prompt.
+        const inspection = await inspectAttachment(sessionId, attachmentContent);
+        const route = routeForAttachment(inspection?.document_type, inspection?.confidence);
+
+        console.log(JSON.stringify({
+          event: "attachment_inspected",
+          sessionId,
+          timestamp,
+          documentType: inspection?.document_type ?? null,
+          confidence: inspection?.confidence ?? null,
+          route,
+        }));
+
+        if (route === "gated") {
+          const offerIntent = detectOfferIntent(signals.lastUserMessage);
+          const facts = inspection?.key_facts ?? null;
+          const offerResponse = buildOfferResponse(offerIntent, facts);
+
+          await setReportWorkflowState(sessionId, "offered");
+          await setOfferKeyFacts(sessionId, facts);
+          console.log(JSON.stringify({
+            event: "report_offer_gate_triggered",
+            sessionId,
+            timestamp,
+            documentType: inspection?.document_type,
+            offerIntent,
+          }));
+          return NextResponse.json({ reply: offerResponse, sessionId });
+        }
+        // route === "workmanship" or "neutral": fall through to the normal
+        // model call below untouched. For "workmanship", SYSTEM_PROMPT's
+        // WORKMANSHIP PHOTO REVIEW section gives the model what it needs to
+        // handle this well on its own - no forced acknowledgment string,
+        // since there's no report boundary to protect on this path. For
+        // "neutral" (other / low confidence), the model just responds
+        // normally to whatever the user actually said.
+      } else if (hasReportCandidateSignal(messages)) {
+        // No attachment on this turn - unchanged text-only path, same
+        // cheap classifier as before, still blind to any earlier-turn
+        // attachment content per flattenForExtraction (unchanged).
         const classification = await classifyReportOfferTrigger(messages);
         if (classification && classification.should_offer_report === true && classification.evidence_level !== "low") {
           const offerIntent = detectOfferIntent(signals.lastUserMessage);
-          const offerResponse = FIXED_REPORT_OFFER_RESPONSES[offerIntent];
+          const offerResponse = buildOfferResponse(offerIntent, null);
 
           console.log(JSON.stringify({
             event: "report_offer_gate_triggered",
@@ -1054,15 +1355,15 @@ export async function POST(req: NextRequest) {
             timestamp,
             reason: classification.reason,
             evidenceLevel: classification.evidence_level,
-            documentType: classification.document_type,
             offerIntent,
           }));
           await setReportWorkflowState(sessionId, "offered");
+          await setOfferKeyFacts(sessionId, null);
           return NextResponse.json({ reply: offerResponse, sessionId });
         }
       }
-      // No candidate signal, or classifier didn't trigger - normal chat,
-      // completely untouched by any of this.
+      // No candidate signal, or classifier/inspection didn't trigger a gate
+      // - normal chat, completely untouched by any of this.
     } else if (workflowState === "offered") {
       // This turn is the user's response to the offer - OR a clarifying
       // follow-up that arrived before any accept/decline (e.g. the offer
@@ -1080,9 +1381,12 @@ export async function POST(req: NextRequest) {
         // advancing workflowState (it stays "offered") and without treating
         // this as acceptance. Allowed only once per session so a user who
         // keeps asking follow-up questions instead of saying yes/no doesn't
-        // get stuck in a loop of re-offered variants.
+        // get stuck in a loop of re-offered variants. Reuses the facts
+        // extracted at the original gate, if any, so the upgraded offer
+        // stays specific rather than going fact-less on this turn.
         const offerIntent = detectOfferIntent(lastUserText);
-        const offerResponse = FIXED_REPORT_OFFER_RESPONSES[offerIntent];
+        const savedFacts = await getOfferKeyFacts(sessionId);
+        const offerResponse = buildOfferResponse(offerIntent, savedFacts);
         await setOfferIntentUpgraded(sessionId, true);
         console.log(JSON.stringify({
           event: "report_offer_intent_upgraded",
