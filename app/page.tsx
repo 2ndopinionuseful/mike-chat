@@ -334,8 +334,8 @@ export default function Home() {
         : {
             type: "text",
             text: pendingFiles.length > 1
-              ? `Here are my ${pendingFiles.length} HVAC quotes. What do you think?`
-              : "Here is my HVAC quote. What do you think?",
+              ? `Here are ${pendingFiles.length} HVAC photos/documents. What do you think?`
+              : "Here's what I've got. What do you think?",
           };
       apiContent = [...fileBlocks, textBlock];
       const displayImages = pendingFiles.filter(f => !f.isPdf).map(f => f.previewUrl);
