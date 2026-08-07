@@ -1,5 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, LevelFormat, BorderStyle } from "docx";
+import {
+  Document,
+  Packer,
+  Paragraph,
+  TextRun,
+  HeadingLevel,
+  AlignmentType,
+  LevelFormat,
+  BorderStyle,
+  Table,
+  TableRow,
+  TableCell,
+  WidthType,
+  ShadingType,
+  VerticalAlign,
+} from "docx";
 
 // A line counts as a section heading if it's short and made up of uppercase letters
 // (allowing spaces, digits, punctuation like & - ( )). This works for both the old
@@ -43,9 +58,210 @@ function parseReport(text: string): { title: string; sections: { heading: string
   return { title: "HVAC Second Opinion Report", sections };
 }
 
+// Extracts a revision code (e.g. "MK-VYUS", optionally "test:MK-VYUS") from the
+// report text, for use in the downloaded filename. Falls back to a generic name
+// if none is found, rather than failing - the filename is a convenience, not a
+// requirement for the doc to generate correctly.
+function extractRevisionCode(text: string): string | null {
+  const match = text.match(/\b(test:)?MK-[A-Z0-9]{4}\b/i);
+  return match ? match[0].toUpperCase().replace(/[^A-Z0-9-]/g, "") : null;
+}
+
+function buildFilename(reportText: string): string {
+  const code = extractRevisionCode(reportText);
+  return code ? `Second-Opinion-${code}.docx` : "hvac-second-opinion.docx";
+}
+
+// ---- Quick Assessment table ----
+//
+// SYSTEM_PROMPT always generates "MIKE'S QUICK ASSESSMENT" as short
+// "Label: Value" lines (Price: Fair, Scope: Complete, Risk Level: Low,
+// Red Flags: 2, Recommendation: ...). Detected generically by heading text
+// containing "QUICK ASSESSMENT" - not hardcoded to this one report's exact
+// wording, so it keeps working if the label set changes slightly later.
+function isQuickAssessmentHeading(heading: string): boolean {
+  return /QUICK ASSESSMENT/i.test(heading);
+}
+
+// Matches "Label: value text" - conservative on the label side (short,
+// starts with a capital letter, no sentence-ending punctuation before the
+// colon) so it doesn't accidentally swallow an ordinary sentence that
+// happens to contain a colon.
+function parseLabelValueLine(line: string): { label: string; value: string } | null {
+  const clean = line.replace(/\*\*/g, "");
+  const match = clean.match(/^([A-Z][A-Za-z ]{1,30}):\s*(.+)$/);
+  if (!match) return null;
+  return { label: match[1].trim(), value: match[2].trim() };
+}
+
+function buildQuickAssessmentTable(contentLines: string[]): Table | null {
+  const rows: { label: string; value: string }[] = [];
+  for (const line of contentLines) {
+    const parsed = parseLabelValueLine(line);
+    if (parsed) rows.push(parsed);
+  }
+  if (rows.length === 0) return null;
+
+  const LABEL_WIDTH = 2400;
+  const VALUE_WIDTH = 7000;
+
+  const tableRows = rows.map((row) => {
+    return new TableRow({
+      children: [
+        new TableCell({
+          width: { size: LABEL_WIDTH, type: WidthType.DXA },
+          shading: { type: ShadingType.CLEAR, fill: "f4ede0" },
+          verticalAlign: VerticalAlign.CENTER,
+          margins: { top: 100, bottom: 100, left: 150, right: 150 },
+          children: [
+            new Paragraph({
+              children: [new TextRun({ text: row.label, bold: true, size: 21, color: "1a1a1a" })],
+            }),
+          ],
+        }),
+        new TableCell({
+          width: { size: VALUE_WIDTH, type: WidthType.DXA },
+          verticalAlign: VerticalAlign.CENTER,
+          margins: { top: 100, bottom: 100, left: 150, right: 150 },
+          children: [
+            new Paragraph({
+              children: [new TextRun({ text: row.value, size: 21, color: "1a1a1a" })],
+            }),
+          ],
+        }),
+      ],
+    });
+  });
+
+  return new Table({
+    width: { size: LABEL_WIDTH + VALUE_WIDTH, type: WidthType.DXA },
+    columnWidths: [LABEL_WIDTH, VALUE_WIDTH],
+    rows: tableRows,
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 2, color: "c8a96e" },
+      bottom: { style: BorderStyle.SINGLE, size: 2, color: "c8a96e" },
+      left: { style: BorderStyle.SINGLE, size: 2, color: "c8a96e" },
+      right: { style: BorderStyle.SINGLE, size: 2, color: "c8a96e" },
+      insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: "e0d5c0" },
+      insideVertical: { style: BorderStyle.SINGLE, size: 1, color: "e0d5c0" },
+    },
+  });
+}
+
+// ---- Equipment tier breakdown table ----
+//
+// Matches lines shaped like SYSTEM_PROMPT's tiered-proposal breakdown:
+// "Option 1 (Infinity, $22,365): Variable-speed inverter condenser..."
+// Groups consecutive matching lines under whichever preceding sub-header
+// line introduced them (e.g. "Carrier Options (Full System):"), so a
+// multi-brand breakdown becomes one table per brand/group rather than one
+// giant undifferentiated table. This is intentionally pattern-based, not
+// hardcoded to Carrier/Lennox specifically - it will pick up the same
+// "Option N (Name, $Price): details" shape for any brand names Mike uses,
+// but a report whose equipment breakdown doesn't follow this exact shape
+// will simply fall through to plain paragraphs (the original behavior),
+// not fail.
+const OPTION_LINE_PATTERN = /^Option\s+(\d+)\s*\(([^,]+),\s*(\$[\d,]+)\)\s*:\s*(.+)$/i;
+
+function parseOptionLine(line: string): { option: string; name: string; price: string; details: string } | null {
+  const clean = line.replace(/\*\*/g, "");
+  const match = clean.match(OPTION_LINE_PATTERN);
+  if (!match) return null;
+  return { option: match[1], name: match[2].trim(), price: match[3].trim(), details: match[4].trim() };
+}
+
+function isGroupSubheaderLine(line: string): boolean {
+  const clean = line.replace(/\*\*/g, "").trim();
+  // Short-ish line ending in a colon, not itself an Option line - e.g.
+  // "Carrier Options (Full System):" - used as the group table's caption.
+  return clean.length > 0 && clean.length < 60 && clean.endsWith(":") && !OPTION_LINE_PATTERN.test(clean);
+}
+
+function buildOptionTable(options: { option: string; name: string; price: string; details: string }[]): Table {
+  const COL_OPTION = 700;
+  const COL_NAME = 1600;
+  const COL_PRICE = 1400;
+  const COL_DETAILS = 5700;
+
+  const headerRow = new TableRow({
+    tableHeader: true,
+    children: [
+      { text: "#", width: COL_OPTION },
+      { text: "Tier", width: COL_NAME },
+      { text: "Price", width: COL_PRICE },
+      { text: "Details", width: COL_DETAILS },
+    ].map(
+      (col) =>
+        new TableCell({
+          width: { size: col.width, type: WidthType.DXA },
+          shading: { type: ShadingType.CLEAR, fill: "c8a96e" },
+          verticalAlign: VerticalAlign.CENTER,
+          margins: { top: 90, bottom: 90, left: 120, right: 120 },
+          children: [new Paragraph({ children: [new TextRun({ text: col.text, bold: true, size: 19, color: "1a1a1a" })] })],
+        })
+    ),
+  });
+
+  const dataRows = options.map((opt, i) => {
+    const shade = i % 2 === 0 ? "ffffff" : "f8f3ea";
+    const cell = (text: string, width: number, bold = false) =>
+      new TableCell({
+        width: { size: width, type: WidthType.DXA },
+        shading: { type: ShadingType.CLEAR, fill: shade },
+        verticalAlign: VerticalAlign.CENTER,
+        margins: { top: 90, bottom: 90, left: 120, right: 120 },
+        children: [new Paragraph({ children: [new TextRun({ text, bold, size: 19, color: "1a1a1a" })] })],
+      });
+
+    return new TableRow({
+      children: [
+        cell(opt.option, COL_OPTION),
+        cell(opt.name, COL_NAME, true),
+        cell(opt.price, COL_PRICE, true),
+        cell(opt.details, COL_DETAILS),
+      ],
+    });
+  });
+
+  return new Table({
+    width: { size: COL_OPTION + COL_NAME + COL_PRICE + COL_DETAILS, type: WidthType.DXA },
+    columnWidths: [COL_OPTION, COL_NAME, COL_PRICE, COL_DETAILS],
+    rows: [headerRow, ...dataRows],
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 2, color: "c8a96e" },
+      bottom: { style: BorderStyle.SINGLE, size: 2, color: "c8a96e" },
+      left: { style: BorderStyle.SINGLE, size: 2, color: "c8a96e" },
+      right: { style: BorderStyle.SINGLE, size: 2, color: "c8a96e" },
+      insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: "e0d5c0" },
+      insideVertical: { style: BorderStyle.SINGLE, size: 1, color: "e0d5c0" },
+    },
+  });
+}
+
+// ---- Red / Yellow flag color coding ----
+//
+// Within flags sections, a sub-header line naming "red flag(s)" or "yellow
+// flag(s)" switches a running "flag color mode" that subsequent bullet
+// lines inherit, until the next sub-header (or end of section) changes it
+// again. Scoped to bullet lines only - the sub-header lines and any plain
+// prose in these sections render normally.
+type FlagMode = "red" | "yellow" | null;
+
+function detectFlagModeSwitch(line: string): FlagMode | undefined {
+  const clean = line.replace(/\*\*/g, "").trim();
+  if (/^red flags?\b/i.test(clean)) return "red";
+  if (/^yellow flags?\b/i.test(clean)) return "yellow";
+  return undefined; // no switch - caller keeps current mode
+}
+
+const FLAG_COLORS: Record<"red" | "yellow", string> = {
+  red: "b03a2e",
+  yellow: "9a7d0a",
+};
+
 function buildDocChildren(text: string) {
   const { sections } = parseReport(text);
-  const children: Paragraph[] = [];
+  const children: (Paragraph | Table)[] = [];
 
   children.push(
     new Paragraph({
@@ -77,14 +293,60 @@ function buildDocChildren(text: string) {
       })
     );
 
+    // Quick Assessment: render the whole section content as one table
+    // instead of the usual paragraph loop, when every meaningful line
+    // parses as "Label: value". Falls through to normal rendering below
+    // if the section doesn't actually look like that (e.g. future prompt
+    // changes alter the shape) - never silently drops content.
+    if (isQuickAssessmentHeading(section.heading)) {
+      const table = buildQuickAssessmentTable(section.content);
+      if (table) {
+        children.push(table);
+        children.push(new Paragraph({ children: [new TextRun("")], spacing: { after: 120 } }));
+        continue;
+      }
+    }
+
+    // Flags sections: track red/yellow mode across the section's lines so
+    // bullet items render in the matching color.
+    let flagMode: FlagMode = null;
+
+    // Equipment breakdown: group consecutive "Option N (...): ..." lines
+    // under their preceding sub-header line into one table per group,
+    // rendering everything else (the sub-header itself, any non-matching
+    // lines) as normal paragraphs around the tables.
+    let pendingOptions: { option: string; name: string; price: string; details: string }[] = [];
+    const flushOptionTable = () => {
+      if (pendingOptions.length > 0) {
+        children.push(buildOptionTable(pendingOptions));
+        children.push(new Paragraph({ children: [new TextRun("")], spacing: { after: 160 } }));
+        pendingOptions = [];
+      }
+    };
+
     for (const line of section.content) {
       const clean = line.replace(/\*\*/g, "");
 
+      const optionRow = parseOptionLine(clean);
+      if (optionRow) {
+        pendingOptions.push(optionRow);
+        continue;
+      }
+      // A non-option line arrived - flush any table we were building
+      // before rendering this line normally (as the group's caption or
+      // unrelated prose).
+      flushOptionTable();
+
+      const switchTo = detectFlagModeSwitch(clean);
+      if (switchTo !== undefined) flagMode = switchTo;
+
       if (clean.startsWith("- ") || clean.startsWith("* ")) {
+        const bulletText = clean.substring(2);
+        const bulletColor = flagMode ? FLAG_COLORS[flagMode] : undefined;
         children.push(
           new Paragraph({
             numbering: { reference: "bullets", level: 0 },
-            children: [new TextRun({ text: clean.substring(2), size: 22 })],
+            children: [new TextRun({ text: bulletText, size: 22, color: bulletColor, bold: !!bulletColor })],
             spacing: { after: 80 },
           })
         );
@@ -124,19 +386,23 @@ function buildDocChildren(text: string) {
           })
         );
       } else if (clean.length > 0) {
+        const isSubheader = isGroupSubheaderLine(clean);
         const parts = clean.split(/(\*\*[^*]+\*\*)/g);
         const runs = parts.map(part => {
           const m = part.match(/^\*\*(.+)\*\*$/);
-          return m ? new TextRun({ text: m[1], bold: true, size: 22 }) : new TextRun({ text: part, size: 22 });
+          if (m) return new TextRun({ text: m[1], bold: true, size: 22 });
+          return new TextRun({ text: part, size: 22, bold: isSubheader });
         });
         children.push(
           new Paragraph({
             children: runs,
-            spacing: { after: 100 },
+            spacing: { after: isSubheader ? 60 : 100, before: isSubheader ? 120 : 0 },
           })
         );
       }
     }
+    // Section ended - flush any option table still pending.
+    flushOptionTable();
   }
 
   return children;
@@ -188,12 +454,13 @@ export async function POST(req: NextRequest) {
 
     const buffer = await Packer.toBuffer(doc);
     const uint8Array = new Uint8Array(buffer);
+    const filename = buildFilename(reportText);
 
     return new NextResponse(uint8Array, {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "Content-Disposition": "attachment; filename=hvac-second-opinion.docx",
+        "Content-Disposition": `attachment; filename=${filename}`,
       },
     });
   } catch (error) {
