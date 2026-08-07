@@ -449,6 +449,7 @@ type PendingOffer = {
   offerIntent: OfferIntent;
   facts: KeyFacts | null;
   isMultiTier: boolean;
+  isMultiDocument: boolean;
 };
 
 async function getPendingOffer(sessionId: string): Promise<PendingOffer | null> {
@@ -505,16 +506,17 @@ async function setOfferIntentUpgraded(sessionId: string, value: boolean): Promis
 type OfferFactsState = {
   facts: KeyFacts | null;
   isMultiTier: boolean;
+  isMultiDocument: boolean;
 };
 
 async function getOfferKeyFacts(sessionId: string): Promise<OfferFactsState> {
   try {
     const stored = await redis.get("offer_key_facts:" + sessionId);
     if (stored) return stored as OfferFactsState;
-    return { facts: null, isMultiTier: false };
+    return { facts: null, isMultiTier: false, isMultiDocument: false };
   } catch (e) {
     console.error("Offer key facts read failed (defaulting to no facts):", e);
-    return { facts: null, isMultiTier: false };
+    return { facts: null, isMultiTier: false, isMultiDocument: false };
   }
 }
 
@@ -660,17 +662,28 @@ function pickWarmOpener(): string {
 // wasn't actually extracted, and returns "" (dropped entirely) if nothing
 // usable came back at all, rather than forcing an awkward empty sentence.
 //
-// When isMultiTier is true, this ignores whatever is in `facts` entirely
-// and uses a separate, safe sentence instead - a document with several
-// brand/equipment/price tiers (e.g. Carrier full system + Lennox full
-// system + Carrier AC-only, three different prices) produces exactly one
-// brand/equipment_type/price field each from the inspection call, which
-// meant those tiers were getting silently concatenated into a single
-// garbled, self-contradictory sentence ("2.5 Ton-ton Carrier, Lennox Gas
-// Furnace and Air Conditioner, AC/Coil only System system"). Rather than
-// try to reconcile which tier's facts belong in one sentence, multi-tier
-// documents get an honest, generic acknowledgment instead.
-function buildKeyFactsSentence(facts: KeyFacts | null | undefined, isMultiTier?: boolean): string {
+// isMultiDocument is checked FIRST, before isMultiTier: when more than one
+// separate attachment was uploaded (e.g. two different contractors' quote
+// PDFs), `facts` is only ever ONE document's key_facts - naming just one
+// of several uploaded proposals as "the" system would misrepresent what
+// was actually shared, so multi-document uploads get a generic
+// acknowledgment instead, same reasoning as the multi-tier case below.
+//
+// When isMultiTier is true (and it's a single document), this ignores
+// whatever is in `facts` entirely and uses a separate, safe sentence
+// instead - a document with several brand/equipment/price tiers (e.g.
+// Carrier full system + Lennox full system + Carrier AC-only, three
+// different prices) produces exactly one brand/equipment_type/price field
+// each from the inspection call, which meant those tiers were getting
+// silently concatenated into a single garbled, self-contradictory sentence
+// ("2.5 Ton-ton Carrier, Lennox Gas Furnace and Air Conditioner, AC/Coil
+// only System system"). Rather than try to reconcile which tier's facts
+// belong in one sentence, multi-tier documents get an honest, generic
+// acknowledgment instead.
+function buildKeyFactsSentence(facts: KeyFacts | null | undefined, isMultiTier?: boolean, isMultiDocument?: boolean): string {
+  if (isMultiDocument) {
+    return "I can see you've shared a couple of different proposals here.";
+  }
   if (isMultiTier) {
     return "I can see this is a multi-tier proposal with a few different equipment options.";
   }
@@ -694,9 +707,9 @@ const OFFER_EVALUATION_CLAUSES: Record<OfferIntent, string> = {
   warranty: "what's actually covered, what's excluded, and how it compares with the rest of the proposal",
 };
 
-function buildOfferResponse(offerIntent: OfferIntent, facts?: KeyFacts | null, isMultiTier?: boolean): string {
+function buildOfferResponse(offerIntent: OfferIntent, facts?: KeyFacts | null, isMultiTier?: boolean, isMultiDocument?: boolean): string {
   const opener = pickWarmOpener();
-  const factsSentence = buildKeyFactsSentence(facts, isMultiTier);
+  const factsSentence = buildKeyFactsSentence(facts, isMultiTier, isMultiDocument);
   const evaluationClause = OFFER_EVALUATION_CLAUSES[offerIntent];
 
   const parts = [
@@ -747,9 +760,9 @@ function pickRapportQuestion(offerIntent: OfferIntent): string {
   return options[Math.floor(Math.random() * options.length)];
 }
 
-function buildRapportResponse(offerIntent: OfferIntent, facts?: KeyFacts | null, isMultiTier?: boolean): string {
+function buildRapportResponse(offerIntent: OfferIntent, facts?: KeyFacts | null, isMultiTier?: boolean, isMultiDocument?: boolean): string {
   const opener = pickWarmOpener();
-  const factsSentence = buildKeyFactsSentence(facts, isMultiTier);
+  const factsSentence = buildKeyFactsSentence(facts, isMultiTier, isMultiDocument);
   const question = pickRapportQuestion(offerIntent);
 
   const parts = [opener, factsSentence, question].filter(Boolean);
@@ -812,7 +825,13 @@ function documentTypeLabel(documentType: string | null | undefined): string {
 // Fixed, deterministic decline - same reasoning as buildOfferResponse: no
 // model call happens before this, so there's no risk of Mike attempting an
 // HVAC-flavored analysis of a document that isn't actually HVAC-related.
-function buildOutOfScopeResponse(documentType: string | null | undefined): string {
+// isMultiDocument uses generic plural wording instead of naming one
+// specific document_type, since with several non-HVAC attachments there
+// isn't one single label that honestly describes all of them.
+function buildOutOfScopeResponse(documentType: string | null | undefined, isMultiDocument?: boolean): string {
+  if (isMultiDocument) {
+    return `Thanks for sending these over - I took a look. These look like documents for work that isn't HVAC-related. I'm built specifically for HVAC decisions, so I'm not the right fit to evaluate them. If you also have an HVAC quote, warranty, or system photo, happy to take a look at that instead.`;
+  }
   const label = documentTypeLabel(documentType);
   return `Thanks for sending this over - I took a look. This looks like an ${label} for work that isn't HVAC-related. I'm built specifically for HVAC decisions, so I'm not the right fit to evaluate this one. If you also have an HVAC quote, warranty, or system photo, happy to take a look at that instead.`;
 }
@@ -827,27 +846,42 @@ function buildOutOfScopeResponse(documentType: string | null | undefined): strin
 // its privacy/cost reasoning are UNCHANGED for classifyReportOfferTrigger
 // and extractStructuredData.
 //
-// Scope is intentionally narrow: classify document type, check whether the
-// underlying work is actually HVAC, pull four safe facts, nothing else. No
-// recommendation, no verdict, no pricing judgment - this call has the same
-// "do not analyze" restriction as CLASSIFICATION_PROMPT, just with vision
-// instead of text.
-const INSPECTION_PROMPT = `You inspect an image or document and report ONLY what type of document it is, whether it's actually HVAC-related, whether it contains multiple pricing tiers, and a few safe factual details. You are not an HVAC advisor and must not evaluate, judge, or recommend anything. Output ONLY valid JSON, nothing else - no preamble, no markdown fences.
+// Scope is intentionally narrow: classify document type PER ATTACHMENT,
+// check whether the underlying work is actually HVAC, pull four safe facts
+// per document, nothing else. No recommendation, no verdict, no pricing
+// judgment - this call has the same "do not analyze" restriction as
+// CLASSIFICATION_PROMPT, just with vision instead of text.
+//
+// Returns an ARRAY - one entry per attachment, always, even when there's
+// only one. This was originally a flat single-document schema; it broke
+// silently on real multi-document uploads (e.g. two different contractors'
+// quote PDFs in one message) because a single set of is_hvac_related/
+// document_type/key_facts fields cannot honestly describe two different
+// documents at once. Unifying on an array, regardless of attachment count,
+// means classifyAttachmentGroup (below) is the only place that needs to
+// know how many documents there were.
+const INSPECTION_PROMPT = `You inspect one or more images/documents attached to a single message and report ONLY what type each one is, whether each is actually HVAC-related, whether each contains multiple pricing tiers, and a few safe factual details per document. You are not an HVAC advisor and must not evaluate, judge, or recommend anything. Output ONLY valid JSON, nothing else - no preamble, no markdown fences.
 
 {
-  "is_hvac_related": boolean,
-  "document_type": "quote_or_proposal" | "warranty_document" | "installation_photos" | "service_invoice" | "other",
-  "is_multi_tier": boolean,
-  "key_facts": {
-    "brand": string or null,
-    "equipment_type": string or null,
-    "tonnage": string or null,
-    "price": string or null
-  },
-  "confidence": "high" | "medium" | "low"
+  "documents": [
+    {
+      "is_hvac_related": boolean,
+      "document_type": "quote_or_proposal" | "warranty_document" | "installation_photos" | "service_invoice" | "other",
+      "is_multi_tier": boolean,
+      "key_facts": {
+        "brand": string or null,
+        "equipment_type": string or null,
+        "tonnage": string or null,
+        "price": string or null
+      },
+      "confidence": "high" | "medium" | "low"
+    }
+  ]
 }
 
-is_hvac_related: true only if the actual WORK described or shown is heating, cooling, ventilation, air conditioning, ductwork, or related equipment (furnaces, condensers, air handlers, heat pumps, mini-splits, thermostats, ductwork, refrigerant lines). Judge this from the described scope of work or what's visible in the photo - NOT from the vendor's company name or letterhead. Many contractors do multiple trades (HVAC, electrical, plumbing) under one business name - a company with "Heating & Cooling" in its name can still send an estimate for pure electrical rewiring, plumbing, or other non-HVAC work, and that should be marked false. If the document describes electrical panel/wiring work, plumbing, roofing, general contracting, or any other non-HVAC trade with no HVAC component, set this to false.
+CRITICAL: the "documents" array must contain EXACTLY one entry for each image or document attached to this message, in the SAME ORDER they were attached. If only one file was attached, "documents" still has exactly one entry. Never merge multiple attachments into one entry, and never split one attachment into multiple entries.
+
+is_hvac_related (per document): true only if the actual WORK described or shown is heating, cooling, ventilation, air conditioning, ductwork, or related equipment (furnaces, condensers, air handlers, heat pumps, mini-splits, thermostats, ductwork, refrigerant lines). Judge this from the described scope of work or what's visible in the photo - NOT from the vendor's company name or letterhead. Many contractors do multiple trades (HVAC, electrical, plumbing) under one business name - a company with "Heating & Cooling" in its name can still send an estimate for pure electrical rewiring, plumbing, or other non-HVAC work, and that should be marked false. If a document describes electrical panel/wiring work, plumbing, roofing, general contracting, or any other non-HVAC trade with no HVAC component, set this to false for that document.
 
 document_type guide (still apply this even when is_hvac_related is false, so the type is available for a clear decline message):
 - "quote_or_proposal": a contractor's written estimate, bid, or sales proposal for new equipment or installation, whether or not it's been priced yet
@@ -856,19 +890,19 @@ document_type guide (still apply this even when is_hvac_related is false, so the
 - "service_invoice": a bill or invoice for completed repair/service work already performed
 - "other": anything that doesn't clearly fit the above, including illegible images, unrelated photos, or partial/unclear documents
 
-is_multi_tier: true if the document presents more than one distinct equipment/pricing option side by side - for example a Good/Better/Best comparison, multiple brand options (e.g. a Carrier system AND a Lennox system), or a full-system option alongside an AC-only option. This is common in tiered contractor proposals. Set this true even if you're not sure which tier the customer is actually considering.
+is_multi_tier (per document): true if that single document presents more than one distinct equipment/pricing option side by side - for example a Good/Better/Best comparison, multiple brand options (e.g. a Carrier system AND a Lennox system) within the SAME proposal, or a full-system option alongside an AC-only option within the SAME proposal. This is about tiers WITHIN one document - it is separate from having multiple separate documents attached, which the "documents" array already captures.
 
-key_facts rules:
-- Extract ONLY brand, equipment_type, tonnage, and price if clearly and explicitly visible in the image/document itself.
+key_facts rules (per document):
+- Extract ONLY brand, equipment_type, tonnage, and price if clearly and explicitly visible in that document itself.
 - Use null for any fact not clearly present - never guess, infer, or estimate a value.
-- If is_multi_tier is true, leave brand, equipment_type, and tonnage NULL even if you can see them for individual tiers - do not combine multiple tiers' brands or equipment types into one field (e.g. never output something like "Carrier, Lennox" or "Gas Furnace and Air Conditioner, AC/Coil only System" - these read as garbled and self-contradictory). price may also be null in this case unless there's a single clear total that applies to the whole document.
+- If that document's is_multi_tier is true, leave brand, equipment_type, and tonnage NULL even if you can see them for individual tiers within it - do not combine multiple tiers' brands or equipment types into one field (e.g. never output something like "Carrier, Lennox" or "Gas Furnace and Air Conditioner, AC/Coil only System" - these read as garbled and self-contradictory). price may also be null in this case unless there's a single clear total that applies to the whole document.
 - NEVER extract or output any personally identifiable information under any circumstance, even if visible: no names, addresses, phone numbers, email addresses, account numbers, or signatures. Leave the relevant field null and do not mention PII elsewhere in the output.
-- price should be the total or headline price if one clearly appears; use null if ambiguous or multiple conflicting prices exist without a clear total.
-- If is_hvac_related is false, key_facts should generally be null throughout - these fields exist to describe HVAC equipment specifically, not other trades' work.
+- price should be that document's total or headline price if one clearly appears; use null if ambiguous or multiple conflicting prices exist without a clear total.
+- If that document's is_hvac_related is false, its key_facts should generally be null throughout - these fields exist to describe HVAC equipment specifically, not other trades' work.
 
-confidence: your confidence in the document_type classification specifically - "low" if the image is unclear, ambiguous, or could plausibly be more than one type.
+confidence (per document): your confidence in that document's document_type classification specifically - "low" if the image is unclear, ambiguous, or could plausibly be more than one type.
 
-Do not include any analysis, opinion, recommendation, or verdict of any kind. Do not describe whether pricing seems fair, whether installation looks correct, or anything evaluative - that is explicitly out of scope for this task.`;
+Do not include any analysis, opinion, recommendation, or verdict of any kind for any document. Do not describe whether pricing seems fair, whether installation looks correct, or anything evaluative - that is explicitly out of scope for this task.`;
 
 // djb2, non-cryptographic - just needs to be a short, stable, deterministic
 // fingerprint of "which attachment(s) are in this message" so a cached
@@ -883,12 +917,16 @@ function hashAttachmentUrls(urls: string[]): string {
   return (hash >>> 0).toString(36);
 }
 
-type AttachmentInspection = {
+type DocumentClassification = {
   is_hvac_related: boolean | null;
   document_type: string | null;
   is_multi_tier: boolean | null;
   key_facts: KeyFacts;
   confidence: string | null;
+};
+
+type AttachmentInspection = {
+  documents: DocumentClassification[];
 };
 
 async function getAttachmentInspection(sessionId: string, attachmentKey: string): Promise<AttachmentInspection | null> {
@@ -934,6 +972,10 @@ function extractAttachmentUrls(content: Array<Record<string, unknown>>): string[
     .filter(Boolean);
 }
 
+function countAttachments(content: Array<Record<string, unknown>>): number {
+  return content.filter((c) => c.type === "image" || c.type === "document").length;
+}
+
 // Fail-safe by design, same as classifyReportOfferTrigger: any error here
 // returns null, and the caller treats that as routeForAttachment("neutral")
 // - a failed inspection should never crash the turn or force a false gate.
@@ -953,7 +995,7 @@ async function inspectAttachment(
   try {
     const response = await client.messages.create({
       model: "claude-haiku-4-5",
-      max_tokens: 400,
+      max_tokens: 800,
       system: INSPECTION_PROMPT,
       messages: [{ role: "user", content: content as never }],
     });
@@ -964,12 +1006,68 @@ async function inspectAttachment(
     const cleaned = block.text.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleaned) as AttachmentInspection;
 
+    // Defensive check: the model is instructed to return exactly one entry
+    // per attachment, but this is not enforced by the API - a malformed or
+    // empty array should fail safe (null -> "neutral" downstream) rather
+    // than let callers index into an array that doesn't match reality.
+    if (!parsed || !Array.isArray(parsed.documents) || parsed.documents.length === 0) {
+      console.error("Attachment inspection returned no documents array - treating as failed inspection.");
+      return null;
+    }
+
+    const expectedCount = countAttachments(content);
+    if (parsed.documents.length !== expectedCount) {
+      // Not fatal - still usable - but worth knowing about if this shows
+      // up in logs repeatedly, since it means the model is miscounting.
+      console.error(`Attachment inspection document count mismatch: expected ${expectedCount}, got ${parsed.documents.length}.`);
+    }
+
     await setAttachmentInspection(sessionId, attachmentKey, parsed);
     return parsed;
   } catch (e) {
     console.error("Attachment inspection failed (fail-safe: treating as neutral):", e);
     return null;
   }
+}
+
+// ---- Group routing for multiple attachments ----
+//
+// Single-document uploads (the common case) behave exactly as before -
+// routeForAttachment on that one document's fields. Multi-document uploads
+// only get a DEFINITE route (gated / workmanship / out_of_scope) when
+// EVERY attached document independently resolves to the SAME route -
+// e.g. two different contractors' quote PDFs (both "gated") can be handled
+// together with one rapport question and one offer. A MIXED set (one
+// quote + one installation photo, or one HVAC quote + one non-HVAC
+// estimate) is deliberately NOT handled here - sequencing a gated offer
+// AND a workmanship review AND a decline in one fixed response is real
+// complexity that hasn't been designed yet, so mixed sets fall through to
+// "neutral" and the normal model call handles them in free text, same as
+// they did before this file supported multi-document inspection at all.
+// This is a deliberately narrower fix than a fully general multi-document
+// router - built for the case actually seen in testing (multiple quotes),
+// not a hypothetical fully-general one.
+function classifyAttachmentGroup(documents: DocumentClassification[]): {
+  route: AttachmentRoute;
+  isMultiDocument: boolean;
+} {
+  if (documents.length <= 1) {
+    const doc = documents[0];
+    const route = doc
+      ? routeForAttachment(doc.document_type, doc.confidence, doc.is_hvac_related)
+      : "neutral";
+    return { route, isMultiDocument: false };
+  }
+
+  const perDocRoutes = documents.map((d) => routeForAttachment(d.document_type, d.confidence, d.is_hvac_related));
+  const firstRoute = perDocRoutes[0];
+  const allSame = perDocRoutes.every((r) => r === firstRoute);
+
+  if (allSame && (firstRoute === "gated" || firstRoute === "workmanship" || firstRoute === "out_of_scope")) {
+    return { route: firstRoute, isMultiDocument: true };
+  }
+  // Mixed types across documents - fall through to a normal model call.
+  return { route: "neutral", isMultiDocument: true };
 }
 
 // Detects whether a FOLLOW-UP message (sent after the generic/initial offer
@@ -1487,21 +1585,30 @@ export async function POST(req: NextRequest) {
       const attachmentContent = getLastUserAttachmentContent(messages);
 
       if (attachmentContent) {
-        // Attachment path: inspect with vision (cached per attachment so a
-        // retry or re-render doesn't re-spend the call), then route on the
-        // result. This never touches classifyReportOfferTrigger or
+        // Attachment path: inspect with vision (cached per attachment set
+        // so a retry or re-render doesn't re-spend the call), then route
+        // on the RESULT ACROSS ALL DOCUMENTS via classifyAttachmentGroup.
+        // This never touches classifyReportOfferTrigger or
         // flattenForExtraction - completely separate call, separate prompt.
         const inspection = await inspectAttachment(sessionId, attachmentContent);
-        const route = routeForAttachment(inspection?.document_type, inspection?.confidence, inspection?.is_hvac_related);
+        const documents = inspection?.documents ?? [];
+        const { route, isMultiDocument } = classifyAttachmentGroup(documents);
+        // Representative single document's fields, used only when there's
+        // exactly one document - for multi-document gated/out-of-scope
+        // cases, buildRapportResponse/buildOfferResponse/
+        // buildOutOfScopeResponse switch to generic plural wording instead
+        // of using any one document's specific fields.
+        const primaryDoc = documents[0];
 
         console.log(JSON.stringify({
           event: "attachment_inspected",
           sessionId,
           timestamp,
-          documentType: inspection?.document_type ?? null,
-          confidence: inspection?.confidence ?? null,
-          isHvacRelated: inspection?.is_hvac_related ?? null,
-          isMultiTier: inspection?.is_multi_tier ?? null,
+          documentCount: documents.length,
+          isMultiDocument,
+          documentTypes: documents.map((d) => d.document_type ?? null),
+          confidences: documents.map((d) => d.confidence ?? null),
+          isHvacRelated: documents.map((d) => d.is_hvac_related ?? null),
           route,
         }));
 
@@ -1514,24 +1621,26 @@ export async function POST(req: NextRequest) {
             event: "attachment_out_of_scope",
             sessionId,
             timestamp,
-            documentType: inspection?.document_type ?? null,
+            isMultiDocument,
+            documentType: primaryDoc?.document_type ?? null,
           }));
-          return NextResponse.json({ reply: buildOutOfScopeResponse(inspection?.document_type), sessionId });
+          return NextResponse.json({ reply: buildOutOfScopeResponse(primaryDoc?.document_type, isMultiDocument), sessionId });
         }
 
         if (route === "gated") {
           const offerIntent = detectOfferIntent(signals.lastUserMessage);
-          const facts = inspection?.key_facts ?? null;
-          const isMultiTier = inspection?.is_multi_tier === true;
-          const rapportResponse = buildRapportResponse(offerIntent, facts, isMultiTier);
+          const facts = isMultiDocument ? null : (primaryDoc?.key_facts ?? null);
+          const isMultiTier = isMultiDocument ? false : primaryDoc?.is_multi_tier === true;
+          const rapportResponse = buildRapportResponse(offerIntent, facts, isMultiTier, isMultiDocument);
 
           await setReportWorkflowState(sessionId, "rapport_pending");
-          await setPendingOffer(sessionId, { offerIntent, facts, isMultiTier });
+          await setPendingOffer(sessionId, { offerIntent, facts, isMultiTier, isMultiDocument });
           console.log(JSON.stringify({
             event: "report_rapport_triggered",
             sessionId,
             timestamp,
-            documentType: inspection?.document_type,
+            isMultiDocument,
+            documentType: primaryDoc?.document_type ?? null,
             isMultiTier,
             offerIntent,
           }));
@@ -1542,18 +1651,22 @@ export async function POST(req: NextRequest) {
         // WORKMANSHIP PHOTO REVIEW section gives the model what it needs to
         // handle this well on its own - no forced acknowledgment string,
         // since there's no report boundary to protect on this path. For
-        // "neutral" (other / low confidence), the model just responds
-        // normally to whatever the user actually said.
+        // "neutral" (other / low confidence / MIXED document types across
+        // a multi-document upload), the model just responds normally to
+        // whatever the user actually said - this is the deliberate fallback
+        // for mixed-type multi-document uploads (e.g. one quote + one
+        // installation photo), which aren't handled by a fixed response.
       } else if (hasReportCandidateSignal(messages)) {
         // No attachment on this turn - unchanged text-only path, same
         // cheap classifier as before, still blind to any earlier-turn
         // attachment content per flattenForExtraction (unchanged). No
-        // vision inspection means no multi-tier signal either - this path
-        // never had garbled facts to begin with, since it never had facts.
+        // vision inspection means no multi-tier/multi-document signal
+        // either - this path never had garbled facts to begin with, since
+        // it never had facts.
         const classification = await classifyReportOfferTrigger(messages);
         if (classification && classification.should_offer_report === true && classification.evidence_level !== "low") {
           const offerIntent = detectOfferIntent(signals.lastUserMessage);
-          const rapportResponse = buildRapportResponse(offerIntent, null, false);
+          const rapportResponse = buildRapportResponse(offerIntent, null, false, false);
 
           console.log(JSON.stringify({
             event: "report_rapport_triggered",
@@ -1564,7 +1677,7 @@ export async function POST(req: NextRequest) {
             offerIntent,
           }));
           await setReportWorkflowState(sessionId, "rapport_pending");
-          await setPendingOffer(sessionId, { offerIntent, facts: null, isMultiTier: false });
+          await setPendingOffer(sessionId, { offerIntent, facts: null, isMultiTier: false, isMultiDocument: false });
           return NextResponse.json({ reply: rapportResponse, sessionId });
         }
       }
@@ -1600,10 +1713,10 @@ export async function POST(req: NextRequest) {
         // actual use case, so fire the offer now with the refined intent
         // rather than treating it as a question to defer past.
         const refinedIntent = detectOfferIntent(lastUserText);
-        const offerResponse = buildOfferResponse(refinedIntent, pending?.facts ?? null, pending?.isMultiTier ?? false);
+        const offerResponse = buildOfferResponse(refinedIntent, pending?.facts ?? null, pending?.isMultiTier ?? false, pending?.isMultiDocument ?? false);
 
         await setReportWorkflowState(sessionId, "offered");
-        await setOfferKeyFacts(sessionId, { facts: pending?.facts ?? null, isMultiTier: pending?.isMultiTier ?? false });
+        await setOfferKeyFacts(sessionId, { facts: pending?.facts ?? null, isMultiTier: pending?.isMultiTier ?? false, isMultiDocument: pending?.isMultiDocument ?? false });
         console.log(JSON.stringify({
           event: "report_offer_gate_triggered",
           sessionId,
@@ -1627,10 +1740,10 @@ export async function POST(req: NextRequest) {
         // Generic reply - not a decline, not a clarifying question, not a
         // genuine question. Fire the offer now with the originally-stored
         // intent/facts, per the fixed one-turn-delay design.
-        const offerResponse = buildOfferResponse(pending?.offerIntent ?? "fairness", pending?.facts ?? null, pending?.isMultiTier ?? false);
+        const offerResponse = buildOfferResponse(pending?.offerIntent ?? "fairness", pending?.facts ?? null, pending?.isMultiTier ?? false, pending?.isMultiDocument ?? false);
 
         await setReportWorkflowState(sessionId, "offered");
-        await setOfferKeyFacts(sessionId, { facts: pending?.facts ?? null, isMultiTier: pending?.isMultiTier ?? false });
+        await setOfferKeyFacts(sessionId, { facts: pending?.facts ?? null, isMultiTier: pending?.isMultiTier ?? false, isMultiDocument: pending?.isMultiDocument ?? false });
         console.log(JSON.stringify({
           event: "report_offer_gate_triggered",
           sessionId,
@@ -1663,7 +1776,7 @@ export async function POST(req: NextRequest) {
         // going fact-less or re-risking a garbled sentence on this turn.
         const offerIntent = detectOfferIntent(lastUserText);
         const savedState = await getOfferKeyFacts(sessionId);
-        const offerResponse = buildOfferResponse(offerIntent, savedState.facts, savedState.isMultiTier);
+        const offerResponse = buildOfferResponse(offerIntent, savedState.facts, savedState.isMultiTier, savedState.isMultiDocument);
         await setOfferIntentUpgraded(sessionId, true);
         console.log(JSON.stringify({
           event: "report_offer_intent_upgraded",
