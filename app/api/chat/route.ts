@@ -646,8 +646,16 @@ function buildOfferResponse(offerIntent: OfferIntent, facts?: KeyFacts | null): 
   return parts.join(" ");
 }
 
-// Routes an inspected attachment to one of three handling paths, based on
-// document_type + confidence from inspectAttachment (below):
+// Routes an inspected attachment to one of four handling paths, based on
+// is_hvac_related + document_type + confidence from inspectAttachment
+// (below):
+//   "out_of_scope" - is_hvac_related is explicitly false -> the document is
+//                   real and identifiable, but not about HVAC at all (e.g.
+//                   an electrical rewiring estimate from a multi-trade
+//                   "heating + cooling" company's letterhead). Checked
+//                   FIRST, before document_type routing, since a non-HVAC
+//                   document should never reach the report gate no matter
+//                   what type of document it otherwise looks like.
 //   "gated"       - quote_or_proposal / warranty_document / service_invoice,
 //                   confidence not low -> warm acknowledgment + fixed offer
 //   "workmanship" - installation_photos -> bypass the gate entirely, let
@@ -659,15 +667,44 @@ function buildOfferResponse(offerIntent: OfferIntent, facts?: KeyFacts | null): 
 //                   so Mike can ask what it is rather than guess
 // A conservative default (falling to "neutral" rather than "gated") is
 // deliberate here: forcing the report offer onto a document Mike couldn't
-// confidently identify would be worse than just asking.
-type AttachmentRoute = "gated" | "workmanship" | "neutral";
+// confidently identify would be worse than just asking. is_hvac_related
+// defaults to true (undefined/null treated as in-scope) so an inspection
+// call that fails to return the field doesn't accidentally block every
+// legitimate HVAC document - only an EXPLICIT false triggers out_of_scope.
+type AttachmentRoute = "out_of_scope" | "gated" | "workmanship" | "neutral";
 
-function routeForAttachment(documentType: string | null | undefined, confidence: string | null | undefined): AttachmentRoute {
+function routeForAttachment(
+  documentType: string | null | undefined,
+  confidence: string | null | undefined,
+  isHvacRelated: boolean | null | undefined
+): AttachmentRoute {
+  if (isHvacRelated === false) return "out_of_scope";
   if (documentType === "installation_photos") return "workmanship";
   if (documentType === "quote_or_proposal" || documentType === "warranty_document" || documentType === "service_invoice") {
     return confidence === "low" ? "neutral" : "gated";
   }
   return "neutral";
+}
+
+// Human-readable label for the out_of_scope decline message - falls back
+// to "document" for unrecognized/null document_type rather than exposing
+// the raw enum value in a user-facing message.
+function documentTypeLabel(documentType: string | null | undefined): string {
+  switch (documentType) {
+    case "quote_or_proposal": return "estimate or proposal";
+    case "warranty_document": return "warranty document";
+    case "installation_photos": return "installation photo";
+    case "service_invoice": return "invoice";
+    default: return "document";
+  }
+}
+
+// Fixed, deterministic decline - same reasoning as buildOfferResponse: no
+// model call happens before this, so there's no risk of Mike attempting an
+// HVAC-flavored analysis of a document that isn't actually HVAC-related.
+function buildOutOfScopeResponse(documentType: string | null | undefined): string {
+  const label = documentTypeLabel(documentType);
+  return `Thanks for sending this over - I took a look. This looks like an ${label} for work that isn't HVAC-related. I'm built specifically for HVAC decisions, so I'm not the right fit to evaluate this one. If you also have an HVAC quote, warranty, or system photo, happy to take a look at that instead.`;
 }
 
 // ---- Attachment inspection (vision) ----
@@ -680,13 +717,15 @@ function routeForAttachment(documentType: string | null | undefined, confidence:
 // its privacy/cost reasoning are UNCHANGED for classifyReportOfferTrigger
 // and extractStructuredData.
 //
-// Scope is intentionally narrow: classify document type, pull four safe
-// HVAC facts, nothing else. No recommendation, no verdict, no pricing
-// judgment - this call has the same "do not analyze" restriction as
-// CLASSIFICATION_PROMPT, just with vision instead of text.
-const INSPECTION_PROMPT = `You inspect an HVAC-related image or document and report ONLY what type of document it is and a few safe factual details. You are not an HVAC advisor and must not evaluate, judge, or recommend anything. Output ONLY valid JSON, nothing else - no preamble, no markdown fences.
+// Scope is intentionally narrow: classify document type, check whether the
+// underlying work is actually HVAC, pull four safe facts, nothing else. No
+// recommendation, no verdict, no pricing judgment - this call has the same
+// "do not analyze" restriction as CLASSIFICATION_PROMPT, just with vision
+// instead of text.
+const INSPECTION_PROMPT = `You inspect an image or document and report ONLY what type of document it is, whether it's actually HVAC-related, and a few safe factual details. You are not an HVAC advisor and must not evaluate, judge, or recommend anything. Output ONLY valid JSON, nothing else - no preamble, no markdown fences.
 
 {
+  "is_hvac_related": boolean,
   "document_type": "quote_or_proposal" | "warranty_document" | "installation_photos" | "service_invoice" | "other",
   "key_facts": {
     "brand": string or null,
@@ -697,7 +736,9 @@ const INSPECTION_PROMPT = `You inspect an HVAC-related image or document and rep
   "confidence": "high" | "medium" | "low"
 }
 
-document_type guide:
+is_hvac_related: true only if the actual WORK described or shown is heating, cooling, ventilation, air conditioning, ductwork, or related equipment (furnaces, condensers, air handlers, heat pumps, mini-splits, thermostats, ductwork, refrigerant lines). Judge this from the described scope of work or what's visible in the photo - NOT from the vendor's company name or letterhead. Many contractors do multiple trades (HVAC, electrical, plumbing) under one business name - a company with "Heating & Cooling" in its name can still send an estimate for pure electrical rewiring, plumbing, or other non-HVAC work, and that should be marked false. If the document describes electrical panel/wiring work, plumbing, roofing, general contracting, or any other non-HVAC trade with no HVAC component, set this to false.
+
+document_type guide (still apply this even when is_hvac_related is false, so the type is available for a clear decline message):
 - "quote_or_proposal": a contractor's written estimate, bid, or sales proposal for new equipment or installation, whether or not it's been priced yet
 - "warranty_document": manufacturer or contractor warranty terms/certificate
 - "installation_photos": photos of installed or partially-installed equipment (condenser, air handler, furnace, ductwork, refrigerant lines, etc.) with no proposal/pricing document visible
@@ -709,6 +750,7 @@ key_facts rules:
 - Use null for any fact not clearly present - never guess, infer, or estimate a value.
 - NEVER extract or output any personally identifiable information under any circumstance, even if visible: no names, addresses, phone numbers, email addresses, account numbers, or signatures. Leave the relevant field null and do not mention PII elsewhere in the output.
 - price should be the total or headline price if one clearly appears; use null if ambiguous or multiple conflicting prices exist without a clear total.
+- If is_hvac_related is false, key_facts should generally be null throughout - these fields exist to describe HVAC equipment specifically, not other trades' work.
 
 confidence: your confidence in the document_type classification specifically - "low" if the image is unclear, ambiguous, or could plausibly be more than one type.
 
@@ -728,6 +770,7 @@ function hashAttachmentUrls(urls: string[]): string {
 }
 
 type AttachmentInspection = {
+  is_hvac_related: boolean | null;
   document_type: string | null;
   key_facts: KeyFacts;
   confidence: string | null;
@@ -1308,7 +1351,7 @@ export async function POST(req: NextRequest) {
         // result. This never touches classifyReportOfferTrigger or
         // flattenForExtraction - completely separate call, separate prompt.
         const inspection = await inspectAttachment(sessionId, attachmentContent);
-        const route = routeForAttachment(inspection?.document_type, inspection?.confidence);
+        const route = routeForAttachment(inspection?.document_type, inspection?.confidence, inspection?.is_hvac_related);
 
         console.log(JSON.stringify({
           event: "attachment_inspected",
@@ -1316,8 +1359,23 @@ export async function POST(req: NextRequest) {
           timestamp,
           documentType: inspection?.document_type ?? null,
           confidence: inspection?.confidence ?? null,
+          isHvacRelated: inspection?.is_hvac_related ?? null,
           route,
         }));
+
+        if (route === "out_of_scope") {
+          // Fixed, deterministic decline - no model call, workflowState
+          // stays "not_triggered" so a later, genuinely HVAC-related
+          // attachment in the same conversation can still trigger the
+          // report gate normally.
+          console.log(JSON.stringify({
+            event: "attachment_out_of_scope",
+            sessionId,
+            timestamp,
+            documentType: inspection?.document_type ?? null,
+          }));
+          return NextResponse.json({ reply: buildOutOfScopeResponse(inspection?.document_type), sessionId });
+        }
 
         if (route === "gated") {
           const offerIntent = detectOfferIntent(signals.lastUserMessage);
