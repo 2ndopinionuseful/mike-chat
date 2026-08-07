@@ -403,12 +403,22 @@ Conversation follows:`;
 // Explicit, stored workflow state - NOT inferred by searching prior messages
 // for marker text. Marker-search is fragile (what if the model paraphrases,
 // or the text changes later?); an explicit state read/write is not.
-type ReportWorkflowState = "not_triggered" | "offered" | "accepted" | "declined" | "report_generated";
+//
+// "rapport_pending" sits between not_triggered and offered: the report-
+// worthy signal was detected, but instead of firing the offer immediately,
+// a fixed, deterministic rapport response goes out first (acknowledgment +
+// facts + an open, non-offer question) - the actual offer fires on the
+// NEXT turn regardless of what the user says, per PendingOffer below. This
+// is a fixed one-turn delay, not adaptive conversation - deliberately kept
+// deterministic (no free model turn) so the leak-protection the hard gate
+// exists for is never at risk, exactly as discussed: the risky alternative
+// (a free model-authored rapport turn) was explicitly rejected.
+type ReportWorkflowState = "not_triggered" | "rapport_pending" | "offered" | "accepted" | "declined" | "report_generated";
 
 async function getReportWorkflowState(sessionId: string): Promise<ReportWorkflowState> {
   try {
     const state = await redis.get("report_state:" + sessionId);
-    if (state === "offered" || state === "accepted" || state === "declined" || state === "report_generated") {
+    if (state === "rapport_pending" || state === "offered" || state === "accepted" || state === "declined" || state === "report_generated") {
       return state;
     }
     return "not_triggered";
@@ -425,6 +435,37 @@ async function setReportWorkflowState(sessionId: string, state: ReportWorkflowSt
     await redis.set("report_state:" + sessionId, state, { ex: 60 * 60 * 24 * 7 });
   } catch (e) {
     console.error("Report workflow state write failed:", e);
+  }
+}
+
+// Persists what the delayed offer should say once the rapport turn is
+// answered - the offerIntent/facts/isMultiTier computed at the moment the
+// report-worthy signal was first detected, so the ACTUAL offer (fired one
+// turn later) doesn't need to re-derive anything and stays consistent with
+// what the rapport message already referenced. PendingOffer reuses
+// KeyFacts/OfferIntent, both declared elsewhere in this file - forward
+// references are fine within one module.
+type PendingOffer = {
+  offerIntent: OfferIntent;
+  facts: KeyFacts | null;
+  isMultiTier: boolean;
+};
+
+async function getPendingOffer(sessionId: string): Promise<PendingOffer | null> {
+  try {
+    const stored = await redis.get("pending_offer:" + sessionId);
+    return stored ? (stored as PendingOffer) : null;
+  } catch (e) {
+    console.error("Pending offer read failed (defaulting to null):", e);
+    return null;
+  }
+}
+
+async function setPendingOffer(sessionId: string, offer: PendingOffer): Promise<void> {
+  try {
+    await redis.set("pending_offer:" + sessionId, JSON.stringify(offer), { ex: 60 * 60 * 24 * 7 });
+  } catch (e) {
+    console.error("Pending offer write failed:", e);
   }
 }
 
@@ -668,6 +709,53 @@ function buildOfferResponse(offerIntent: OfferIntent, facts?: KeyFacts | null, i
   return parts.join(" ");
 }
 
+// ---- Rapport turn (fires BEFORE the offer, one turn earlier) ----
+//
+// Multiple fixed variants per intent, picked at random - same reasoning as
+// WARM_OPENERS: a small set of fixed, non-model-authored strings carries no
+// leak risk, but avoids the same exact question appearing every time. Each
+// question is a genuine, open, non-evaluative question - it builds rapport
+// by asking about the person's situation, never by previewing analysis,
+// hinting at a verdict, or referencing the report at all. The offer itself
+// is a separate, later fixed message (buildOfferResponse) - this function
+// never mentions the report.
+const RAPPORT_QUESTIONS: Record<OfferIntent, string[]> = {
+  comparison: [
+    "What's got you comparing these - trying to pick between brands, or between a full system and AC-only?",
+    "Are you already leaning toward one of these, or still wide open?",
+    "What matters most to you here - price, brand, or something else?",
+  ],
+  fairness: [
+    "What's got you double-checking this one - a gut feeling, or something specific in the quote?",
+    "Is this the only quote you've got so far, or are you comparing it against others?",
+    "What's your timeline like - deciding soon, or just gathering information for now?",
+  ],
+  repair_vs_replace: [
+    "How's the system been acting up - still running, or already down?",
+    "Roughly how old is the current system?",
+    "Are you leaning repair or replace already, or genuinely torn?",
+  ],
+  warranty: [
+    "Is this a new install, or are you checking coverage on an existing system?",
+    "What's prompting the warranty check - something already going wrong, or just being thorough?",
+    "Do you know if this is the manufacturer's warranty, the contractor's, or both?",
+  ],
+};
+
+function pickRapportQuestion(offerIntent: OfferIntent): string {
+  const options = RAPPORT_QUESTIONS[offerIntent];
+  return options[Math.floor(Math.random() * options.length)];
+}
+
+function buildRapportResponse(offerIntent: OfferIntent, facts?: KeyFacts | null, isMultiTier?: boolean): string {
+  const opener = pickWarmOpener();
+  const factsSentence = buildKeyFactsSentence(facts, isMultiTier);
+  const question = pickRapportQuestion(offerIntent);
+
+  const parts = [opener, factsSentence, question].filter(Boolean);
+  return parts.join(" ");
+}
+
 // Routes an inspected attachment to one of four handling paths, based on
 // is_hvac_related + document_type + confidence from inspectAttachment
 // (below):
@@ -901,6 +989,27 @@ function isReportIntentClarification(text: string): boolean {
     "is this fair", "is the price fair", "overpriced", "good price", "reasonable price",
   ];
   return terms.some((term) => t.includes(term));
+}
+
+// Cheap, deterministic check for "the user asked a real question here"
+// rather than just replying to the rapport question or saying something
+// generic. Used ONLY on the rapport_pending turn: if someone asks a
+// genuine question (e.g. "what does SEER2 mean", "is Carrier a good
+// brand") instead of just answering, forcing the report offer on top of
+// an unanswered question would feel exactly as tone-deaf as offering it
+// too early in the first place - Mike should actually answer, and let the
+// offer wait one more turn. A literal "?" is the strongest signal;
+// question-word openers catch informally-punctuated questions too. This
+// is intentionally permissive (a false positive just delays the offer by
+// one extra turn, which is low-cost) rather than strict.
+function isGenuineQuestion(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (t.includes("?")) return true;
+  const questionStarters = [
+    "what", "why", "how", "does", "do ", "is ", "are ", "should", "can ", "could",
+    "would", "will", "when", "where", "who",
+  ];
+  return questionStarters.some((starter) => t.startsWith(starter));
 }
 
 // SAFETY OVERRIDE: the report-offer gate runs entirely in code, before the
@@ -1359,11 +1468,16 @@ export async function POST(req: NextRequest) {
     // risk versus the original single generic response.
     //
     // State is explicitly stored per session (not inferred by searching
-    // message text for marker phrases). States: not_triggered -> offered ->
-    // accepted|declined -> (accepted path only) report_generated. A
-    // separate one-shot flag (offer_intent_upgraded) tracks whether the
-    // "offered" state's fixed wording has already been upgraded once in
-    // response to a clarifying follow-up - see below.
+    // message text for marker phrases). States: not_triggered ->
+    // rapport_pending -> offered -> accepted|declined -> (accepted path
+    // only) report_generated. rapport_pending normally resolves to the
+    // offer one turn later regardless of what was said - EXCEPT a clear
+    // decline (respected immediately) or a genuine question (the offer is
+    // deferred again so the question gets answered first; rapport_pending
+    // persists until a non-question reply arrives). A separate one-shot
+    // flag (offer_intent_upgraded) tracks whether the "offered" state's
+    // fixed wording has already been upgraded once in response to a
+    // clarifying follow-up - see below.
     //
     // Tier 1 safety messages never reach this code at all - they were
     // caught and returned early above, before this point in the file.
@@ -1409,19 +1523,19 @@ export async function POST(req: NextRequest) {
           const offerIntent = detectOfferIntent(signals.lastUserMessage);
           const facts = inspection?.key_facts ?? null;
           const isMultiTier = inspection?.is_multi_tier === true;
-          const offerResponse = buildOfferResponse(offerIntent, facts, isMultiTier);
+          const rapportResponse = buildRapportResponse(offerIntent, facts, isMultiTier);
 
-          await setReportWorkflowState(sessionId, "offered");
-          await setOfferKeyFacts(sessionId, { facts, isMultiTier });
+          await setReportWorkflowState(sessionId, "rapport_pending");
+          await setPendingOffer(sessionId, { offerIntent, facts, isMultiTier });
           console.log(JSON.stringify({
-            event: "report_offer_gate_triggered",
+            event: "report_rapport_triggered",
             sessionId,
             timestamp,
             documentType: inspection?.document_type,
             isMultiTier,
             offerIntent,
           }));
-          return NextResponse.json({ reply: offerResponse, sessionId });
+          return NextResponse.json({ reply: rapportResponse, sessionId });
         }
         // route === "workmanship" or "neutral": fall through to the normal
         // model call below untouched. For "workmanship", SYSTEM_PROMPT's
@@ -1439,23 +1553,93 @@ export async function POST(req: NextRequest) {
         const classification = await classifyReportOfferTrigger(messages);
         if (classification && classification.should_offer_report === true && classification.evidence_level !== "low") {
           const offerIntent = detectOfferIntent(signals.lastUserMessage);
-          const offerResponse = buildOfferResponse(offerIntent, null, false);
+          const rapportResponse = buildRapportResponse(offerIntent, null, false);
 
           console.log(JSON.stringify({
-            event: "report_offer_gate_triggered",
+            event: "report_rapport_triggered",
             sessionId,
             timestamp,
             reason: classification.reason,
             evidenceLevel: classification.evidence_level,
             offerIntent,
           }));
-          await setReportWorkflowState(sessionId, "offered");
-          await setOfferKeyFacts(sessionId, { facts: null, isMultiTier: false });
-          return NextResponse.json({ reply: offerResponse, sessionId });
+          await setReportWorkflowState(sessionId, "rapport_pending");
+          await setPendingOffer(sessionId, { offerIntent, facts: null, isMultiTier: false });
+          return NextResponse.json({ reply: rapportResponse, sessionId });
         }
       }
       // No candidate signal, or classifier/inspection didn't trigger a gate
       // - normal chat, completely untouched by any of this.
+    } else if (workflowState === "rapport_pending") {
+      // This is the turn immediately after the rapport question - the
+      // ACTUAL offer fires now, one turn later than the original design.
+      // By design this is a FIXED delay, not adaptive: the offer fires
+      // regardless of what the user said in reply to the rapport question
+      // (unless they gave a clear decline - see below), using the intent/
+      // facts computed back when the signal was first detected. The one
+      // refinement allowed: if their reply itself clarifies intent more
+      // specifically (same isReportIntentClarification/detectOfferIntent
+      // used by the "offered" state's upgrade path below), that refined
+      // intent is used instead of the originally-stored one - still pure
+      // string matching, never the model, so this adds no leak risk.
+      const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
+      const lastUserText = lastUserMessage ? flattenForExtraction(lastUserMessage.content) : "";
+      const pending = await getPendingOffer(sessionId);
+
+      if (isDeclineReply(lastUserText)) {
+        // A decline signal arriving during the rapport turn (before the
+        // offer was even shown) is respected immediately rather than
+        // force-showing the offer anyway - forcing it right after a
+        // decline-shaped reply would feel tone-deaf.
+        await setReportWorkflowState(sessionId, "declined");
+        console.log(JSON.stringify({ event: "report_offer_declined", sessionId, timestamp, stage: "rapport_pending" }));
+        // Falls through to normal chat below.
+      } else if (isReportIntentClarification(lastUserText)) {
+        // Their reply itself clarifies exactly what kind of judgment they
+        // want (e.g. "should I repair or replace?") - this is the report's
+        // actual use case, so fire the offer now with the refined intent
+        // rather than treating it as a question to defer past.
+        const refinedIntent = detectOfferIntent(lastUserText);
+        const offerResponse = buildOfferResponse(refinedIntent, pending?.facts ?? null, pending?.isMultiTier ?? false);
+
+        await setReportWorkflowState(sessionId, "offered");
+        await setOfferKeyFacts(sessionId, { facts: pending?.facts ?? null, isMultiTier: pending?.isMultiTier ?? false });
+        console.log(JSON.stringify({
+          event: "report_offer_gate_triggered",
+          sessionId,
+          timestamp,
+          stage: "delayed_after_rapport",
+          offerIntent: refinedIntent,
+        }));
+        return NextResponse.json({ reply: offerResponse, sessionId });
+      } else if (isGenuineQuestion(lastUserText)) {
+        // A real question, not an intent clarification and not a decline -
+        // e.g. "what does SEER2 mean" or "is Carrier a good brand". Forcing
+        // the report offer on top of an unanswered question is exactly the
+        // kind of abrupt, tone-deaf sequencing this whole rapport-delay
+        // feature exists to avoid. Leave workflowState at "rapport_pending"
+        // (NOT advanced) and fall through to a normal model turn so Mike
+        // actually answers - the offer will still fire on whichever future
+        // turn isn't itself a question, per the same logic re-running then.
+        console.log(JSON.stringify({ event: "report_rapport_question_deferred", sessionId, timestamp }));
+        // Falls through to normal chat below - no early return.
+      } else {
+        // Generic reply - not a decline, not a clarifying question, not a
+        // genuine question. Fire the offer now with the originally-stored
+        // intent/facts, per the fixed one-turn-delay design.
+        const offerResponse = buildOfferResponse(pending?.offerIntent ?? "fairness", pending?.facts ?? null, pending?.isMultiTier ?? false);
+
+        await setReportWorkflowState(sessionId, "offered");
+        await setOfferKeyFacts(sessionId, { facts: pending?.facts ?? null, isMultiTier: pending?.isMultiTier ?? false });
+        console.log(JSON.stringify({
+          event: "report_offer_gate_triggered",
+          sessionId,
+          timestamp,
+          stage: "delayed_after_rapport",
+          offerIntent: pending?.offerIntent ?? "fairness",
+        }));
+        return NextResponse.json({ reply: offerResponse, sessionId });
+      }
     } else if (workflowState === "offered") {
       // This turn is the user's response to the offer - OR a clarifying
       // follow-up that arrived before any accept/decline (e.g. the offer
