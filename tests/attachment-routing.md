@@ -119,24 +119,80 @@ response.
 
 ---
 
+## Test 5 — Non-HVAC Document From a Multi-Trade Vendor (real production case)
+
+Origin: real user session, [date] — a $49,600 electrical rewiring estimate
+(full-house rewire, panel/meter upgrade to 200A, permits) from a vendor
+whose letterhead reads "H · Heating · Cooling." The document is genuinely
+an estimate/proposal in form, but the underlying work is electrical, not
+HVAC. Before the `is_hvac_related` field existed, this would have routed
+to `"gated"` purely off the vendor's HVAC-sounding branding and offered
+the Second Opinion Report on work Mike has no business evaluating.
+
+**Input:**
+- Upload: a contractor estimate for non-HVAC work (electrical, plumbing,
+  roofing, etc.) from a vendor whose name or letterhead suggests HVAC
+- Caption: generic (e.g. default "Here's what I've got. What do you
+  think?" caption)
+
+**Expected:**
+- [ ] `inspectAttachment` returns `is_hvac_related: false`, judged from the
+      actual scope of work described (rewire, panel upgrade, outlets/
+      switches) — not from the vendor's company name
+- [ ] `document_type` still gets classified normally (e.g.
+      `"quote_or_proposal"`) even though `is_hvac_related` is false, so the
+      decline message can name what it actually is
+- [ ] `routeForAttachment` returns `"out_of_scope"` — checked before, and
+      overriding, whatever the document_type routing would otherwise be
+- [ ] `workflowState` stays `"not_triggered"` — no report offer goes out,
+      and a later genuinely-HVAC attachment in the same conversation can
+      still trigger the gate normally
+- [ ] Reply is the fixed `buildOutOfScopeResponse` text: acknowledges the
+      upload, names the document type honestly, states plainly that Mike
+      is HVAC-only, and invites an HVAC-specific document instead
+- [ ] No attempt to evaluate the non-HVAC pricing, scope, or fairness in
+      any form - the decline is clean, not a partial analysis
+
+**Log events to check:** `attachment_inspected`
+(`isHvacRelated: false`, `route: "out_of_scope"`),
+`attachment_out_of_scope`, absence of `report_offer_gate_triggered`.
+
+**Actual result (this run):** Passed. Full reply: *"Thanks for sending
+this over - I took a look. This looks like an estimate or proposal for
+work that isn't HVAC-related. I'm built specifically for HVAC decisions,
+so I'm not the right fit to evaluate this one. If you also have an HVAC
+quote, warranty, or system photo, happy to take a look at that instead."*
+
+---
+
 ## Pass criteria
 
-All four tests must pass for this attachment-routing change to be
-considered complete. Test 1 is the priority — it's the actual bug that
-prompted this work — but 2–4 confirm the router doesn't regress the paths
-that were already working (quote gating) or over-correct into always
-assuming "photos" (ambiguous case).
+All five tests must pass for this attachment-routing change to be
+considered complete. Test 1 and Test 5 are both real production cases
+(not synthetic) and take priority - 2–4 confirm the router doesn't
+regress the paths that were already working (quote gating) or over-correct
+into always assuming "photos" (ambiguous case) or "out of scope" (a
+genuine HVAC document from a multi-trade vendor should NOT be declined -
+worth spot-checking that a real HVAC quote from the same kind of
+multi-trade company still routes to "gated" normally, as a companion check
+to Test 5).
 
 ## Notes for future runs
 
 - Tests 1–3 depend on `inspectAttachment`'s vision call actually reading
   the image/PDF correctly — if a real run fails, check whether the failure
-  is in classification (`document_type`/`confidence` wrong) vs. in
-  downstream handling (`routeForAttachment` or `buildOfferResponse` wrong
-  given a correct classification) before concluding the routing logic
-  itself is broken.
+  is in classification (`document_type`/`confidence`/`is_hvac_related`
+  wrong) vs. in downstream handling (`routeForAttachment` or
+  `buildOfferResponse`/`buildOutOfScopeResponse` wrong given a correct
+  classification) before concluding the routing logic itself is broken.
 - If `inspectAttachment` throws or returns unparseable JSON, it fails safe
-  to `null` → `routeForAttachment(undefined, undefined)` → `"neutral"`.
-  Confirm this fail-safe path also gets exercised at least once (e.g. by
-  temporarily breaking the API key) rather than only ever testing the
-  happy path.
+  to `null` → `routeForAttachment(undefined, undefined, undefined)` →
+  `"neutral"` (not `"out_of_scope"` - `is_hvac_related` defaults to
+  in-scope on failure, so an inspection error can't accidentally block a
+  legitimate HVAC document). Confirm this fail-safe path also gets
+  exercised at least once (e.g. by temporarily breaking the API key)
+  rather than only ever testing the happy path.
+- Test 5's vendor-name-vs-actual-scope distinction is the kind of thing
+  that could regress silently if INSPECTION_PROMPT is ever edited - worth
+  re-running this specific test after any future change to that prompt,
+  not just after changes to the routing code.
