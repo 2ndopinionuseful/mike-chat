@@ -1681,6 +1681,19 @@ export async function POST(req: NextRequest) {
       if (isDeclineReply(lastUserText)) {
         await setReportWorkflowState(sessionId, "declined");
         console.log(JSON.stringify({ event: "report_offer_declined", sessionId, timestamp }));
+      } else if (isGenuineQuestion(lastUserText)) {
+        // A real question ("what does SEER2 mean?"), not a decline and not
+        // an intent clarification (already checked above) - answering it
+        // is not the same as accepting the report, so workflowState is
+        // deliberately left at "offered" rather than advancing to
+        // "accepted". Without this check, an unrelated question here would
+        // silently flip into accepted state, and a later generic reply
+        // like "ok" or "thanks" could get treated by SYSTEM_PROMPT's OFFER
+        // section as continued report intake the user never actually
+        // agreed to. The model still answers the question normally on this
+        // turn via the fall-through below - only the state transition is
+        // suppressed.
+        console.log(JSON.stringify({ event: "report_offer_question_deferred", sessionId, timestamp }));
       } else {
         await setReportWorkflowState(sessionId, "accepted");
         console.log(JSON.stringify({ event: "report_offer_accepted", sessionId, timestamp }));
