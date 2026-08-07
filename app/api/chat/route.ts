@@ -452,26 +452,34 @@ async function setOfferIntentUpgraded(sessionId: string, value: boolean): Promis
   }
 }
 
-// Persists the key facts extracted at the moment the initial offer fires,
-// so that if the user's very next message clarifies intent (triggering the
-// offer_intent_upgraded path above), the upgraded offer can still reference
-// the same real facts instead of going fact-less on that turn. KeyFacts is
-// declared further down in this file (with the rest of the offer-building
-// logic) - TypeScript resolves type references across the whole module
-// regardless of declaration order, so this forward reference is fine.
-async function getOfferKeyFacts(sessionId: string): Promise<KeyFacts | null> {
+// Persists the key facts (and multi-tier flag) extracted at the moment the
+// initial offer fires, so that if the user's very next message clarifies
+// intent (triggering the offer_intent_upgraded path above), the upgraded
+// offer can still reference the same real facts - and the same safe
+// multi-tier handling - instead of going fact-less or re-risking a garbled
+// sentence on that turn. KeyFacts/OfferFactsState are declared further down
+// in this file (with the rest of the offer-building logic) - TypeScript
+// resolves type references across the whole module regardless of
+// declaration order, so this forward reference is fine.
+type OfferFactsState = {
+  facts: KeyFacts | null;
+  isMultiTier: boolean;
+};
+
+async function getOfferKeyFacts(sessionId: string): Promise<OfferFactsState> {
   try {
     const stored = await redis.get("offer_key_facts:" + sessionId);
-    return stored ? (stored as KeyFacts) : null;
+    if (stored) return stored as OfferFactsState;
+    return { facts: null, isMultiTier: false };
   } catch (e) {
-    console.error("Offer key facts read failed (defaulting to null):", e);
-    return null;
+    console.error("Offer key facts read failed (defaulting to no facts):", e);
+    return { facts: null, isMultiTier: false };
   }
 }
 
-async function setOfferKeyFacts(sessionId: string, facts: KeyFacts | null): Promise<void> {
+async function setOfferKeyFacts(sessionId: string, state: OfferFactsState): Promise<void> {
   try {
-    await redis.set("offer_key_facts:" + sessionId, JSON.stringify(facts || {}), { ex: 60 * 60 * 24 * 7 });
+    await redis.set("offer_key_facts:" + sessionId, JSON.stringify(state), { ex: 60 * 60 * 24 * 7 });
   } catch (e) {
     console.error("Offer key facts write failed:", e);
   }
@@ -610,7 +618,21 @@ function pickWarmOpener(): string {
 // Degrades gracefully as fields go missing - never invents a fact that
 // wasn't actually extracted, and returns "" (dropped entirely) if nothing
 // usable came back at all, rather than forcing an awkward empty sentence.
-function buildKeyFactsSentence(facts: KeyFacts | null | undefined): string {
+//
+// When isMultiTier is true, this ignores whatever is in `facts` entirely
+// and uses a separate, safe sentence instead - a document with several
+// brand/equipment/price tiers (e.g. Carrier full system + Lennox full
+// system + Carrier AC-only, three different prices) produces exactly one
+// brand/equipment_type/price field each from the inspection call, which
+// meant those tiers were getting silently concatenated into a single
+// garbled, self-contradictory sentence ("2.5 Ton-ton Carrier, Lennox Gas
+// Furnace and Air Conditioner, AC/Coil only System system"). Rather than
+// try to reconcile which tier's facts belong in one sentence, multi-tier
+// documents get an honest, generic acknowledgment instead.
+function buildKeyFactsSentence(facts: KeyFacts | null | undefined, isMultiTier?: boolean): string {
+  if (isMultiTier) {
+    return "I can see this is a multi-tier proposal with a few different equipment options.";
+  }
   if (!facts) return "";
   const descParts = [facts.tonnage ? `${facts.tonnage}-ton` : null, facts.brand, facts.equipment_type].filter(Boolean);
   const desc = descParts.join(" ").trim();
@@ -631,9 +653,9 @@ const OFFER_EVALUATION_CLAUSES: Record<OfferIntent, string> = {
   warranty: "what's actually covered, what's excluded, and how it compares with the rest of the proposal",
 };
 
-function buildOfferResponse(offerIntent: OfferIntent, facts?: KeyFacts | null): string {
+function buildOfferResponse(offerIntent: OfferIntent, facts?: KeyFacts | null, isMultiTier?: boolean): string {
   const opener = pickWarmOpener();
-  const factsSentence = buildKeyFactsSentence(facts);
+  const factsSentence = buildKeyFactsSentence(facts, isMultiTier);
   const evaluationClause = OFFER_EVALUATION_CLAUSES[offerIntent];
 
   const parts = [
@@ -722,11 +744,12 @@ function buildOutOfScopeResponse(documentType: string | null | undefined): strin
 // recommendation, no verdict, no pricing judgment - this call has the same
 // "do not analyze" restriction as CLASSIFICATION_PROMPT, just with vision
 // instead of text.
-const INSPECTION_PROMPT = `You inspect an image or document and report ONLY what type of document it is, whether it's actually HVAC-related, and a few safe factual details. You are not an HVAC advisor and must not evaluate, judge, or recommend anything. Output ONLY valid JSON, nothing else - no preamble, no markdown fences.
+const INSPECTION_PROMPT = `You inspect an image or document and report ONLY what type of document it is, whether it's actually HVAC-related, whether it contains multiple pricing tiers, and a few safe factual details. You are not an HVAC advisor and must not evaluate, judge, or recommend anything. Output ONLY valid JSON, nothing else - no preamble, no markdown fences.
 
 {
   "is_hvac_related": boolean,
   "document_type": "quote_or_proposal" | "warranty_document" | "installation_photos" | "service_invoice" | "other",
+  "is_multi_tier": boolean,
   "key_facts": {
     "brand": string or null,
     "equipment_type": string or null,
@@ -745,9 +768,12 @@ document_type guide (still apply this even when is_hvac_related is false, so the
 - "service_invoice": a bill or invoice for completed repair/service work already performed
 - "other": anything that doesn't clearly fit the above, including illegible images, unrelated photos, or partial/unclear documents
 
+is_multi_tier: true if the document presents more than one distinct equipment/pricing option side by side - for example a Good/Better/Best comparison, multiple brand options (e.g. a Carrier system AND a Lennox system), or a full-system option alongside an AC-only option. This is common in tiered contractor proposals. Set this true even if you're not sure which tier the customer is actually considering.
+
 key_facts rules:
 - Extract ONLY brand, equipment_type, tonnage, and price if clearly and explicitly visible in the image/document itself.
 - Use null for any fact not clearly present - never guess, infer, or estimate a value.
+- If is_multi_tier is true, leave brand, equipment_type, and tonnage NULL even if you can see them for individual tiers - do not combine multiple tiers' brands or equipment types into one field (e.g. never output something like "Carrier, Lennox" or "Gas Furnace and Air Conditioner, AC/Coil only System" - these read as garbled and self-contradictory). price may also be null in this case unless there's a single clear total that applies to the whole document.
 - NEVER extract or output any personally identifiable information under any circumstance, even if visible: no names, addresses, phone numbers, email addresses, account numbers, or signatures. Leave the relevant field null and do not mention PII elsewhere in the output.
 - price should be the total or headline price if one clearly appears; use null if ambiguous or multiple conflicting prices exist without a clear total.
 - If is_hvac_related is false, key_facts should generally be null throughout - these fields exist to describe HVAC equipment specifically, not other trades' work.
@@ -772,6 +798,7 @@ function hashAttachmentUrls(urls: string[]): string {
 type AttachmentInspection = {
   is_hvac_related: boolean | null;
   document_type: string | null;
+  is_multi_tier: boolean | null;
   key_facts: KeyFacts;
   confidence: string | null;
 };
@@ -1360,6 +1387,7 @@ export async function POST(req: NextRequest) {
           documentType: inspection?.document_type ?? null,
           confidence: inspection?.confidence ?? null,
           isHvacRelated: inspection?.is_hvac_related ?? null,
+          isMultiTier: inspection?.is_multi_tier ?? null,
           route,
         }));
 
@@ -1380,15 +1408,17 @@ export async function POST(req: NextRequest) {
         if (route === "gated") {
           const offerIntent = detectOfferIntent(signals.lastUserMessage);
           const facts = inspection?.key_facts ?? null;
-          const offerResponse = buildOfferResponse(offerIntent, facts);
+          const isMultiTier = inspection?.is_multi_tier === true;
+          const offerResponse = buildOfferResponse(offerIntent, facts, isMultiTier);
 
           await setReportWorkflowState(sessionId, "offered");
-          await setOfferKeyFacts(sessionId, facts);
+          await setOfferKeyFacts(sessionId, { facts, isMultiTier });
           console.log(JSON.stringify({
             event: "report_offer_gate_triggered",
             sessionId,
             timestamp,
             documentType: inspection?.document_type,
+            isMultiTier,
             offerIntent,
           }));
           return NextResponse.json({ reply: offerResponse, sessionId });
@@ -1403,11 +1433,13 @@ export async function POST(req: NextRequest) {
       } else if (hasReportCandidateSignal(messages)) {
         // No attachment on this turn - unchanged text-only path, same
         // cheap classifier as before, still blind to any earlier-turn
-        // attachment content per flattenForExtraction (unchanged).
+        // attachment content per flattenForExtraction (unchanged). No
+        // vision inspection means no multi-tier signal either - this path
+        // never had garbled facts to begin with, since it never had facts.
         const classification = await classifyReportOfferTrigger(messages);
         if (classification && classification.should_offer_report === true && classification.evidence_level !== "low") {
           const offerIntent = detectOfferIntent(signals.lastUserMessage);
-          const offerResponse = buildOfferResponse(offerIntent, null);
+          const offerResponse = buildOfferResponse(offerIntent, null, false);
 
           console.log(JSON.stringify({
             event: "report_offer_gate_triggered",
@@ -1418,7 +1450,7 @@ export async function POST(req: NextRequest) {
             offerIntent,
           }));
           await setReportWorkflowState(sessionId, "offered");
-          await setOfferKeyFacts(sessionId, null);
+          await setOfferKeyFacts(sessionId, { facts: null, isMultiTier: false });
           return NextResponse.json({ reply: offerResponse, sessionId });
         }
       }
@@ -1441,12 +1473,13 @@ export async function POST(req: NextRequest) {
         // advancing workflowState (it stays "offered") and without treating
         // this as acceptance. Allowed only once per session so a user who
         // keeps asking follow-up questions instead of saying yes/no doesn't
-        // get stuck in a loop of re-offered variants. Reuses the facts
-        // extracted at the original gate, if any, so the upgraded offer
-        // stays specific rather than going fact-less on this turn.
+        // get stuck in a loop of re-offered variants. Reuses the facts (and
+        // multi-tier flag) extracted at the original gate, if any, so the
+        // upgraded offer stays specific - and safely worded - rather than
+        // going fact-less or re-risking a garbled sentence on this turn.
         const offerIntent = detectOfferIntent(lastUserText);
-        const savedFacts = await getOfferKeyFacts(sessionId);
-        const offerResponse = buildOfferResponse(offerIntent, savedFacts);
+        const savedState = await getOfferKeyFacts(sessionId);
+        const offerResponse = buildOfferResponse(offerIntent, savedState.facts, savedState.isMultiTier);
         await setOfferIntentUpgraded(sessionId, true);
         console.log(JSON.stringify({
           event: "report_offer_intent_upgraded",
