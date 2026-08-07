@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Redis } from "@upstash/redis";
 import { NextRequest, NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
+import { QUOTE_DATA_FILES } from "../../../data/quotes/index";
 
 export const maxDuration = 60;
 
@@ -13,6 +14,229 @@ const redis = new Redis({
   url: process.env.STORAGE_KV_REST_API_URL || process.env.KV_REST_API_URL || "",
   token: process.env.STORAGE_KV_REST_API_TOKEN || process.env.KV_REST_API_TOKEN || "",
 });
+
+// ============================================================================
+// REAL QUOTE EVIDENCE RETRIEVAL (tier 1: exact local match, tier 3: national
+// directional fallback - tier 2/regional deliberately skipped, see below)
+// ============================================================================
+//
+// Reads the statically-imported quote data batches (QUOTE_DATA_FILES) and
+// builds per-market and national summaries ONCE, at module load (cold
+// start) - not per request. Since the underlying data is bundled JSON, not
+// something that changes between requests, this computation is naturally
+// idempotent and cheap enough to just do once and hold in memory - this IS
+// the "cache the summary, not the raw records" requirement, just satisfied
+// by module-level computation instead of a Redis round-trip. No Postgres,
+// no vector DB, no regional clustering, no evidence engine - exactly as
+// scoped.
+//
+// Regional (tier 2) matching is deliberately NOT implemented - there's no
+// reliable definition of "similar-cost market" in this codebase yet, and
+// guessing at one (e.g. hardcoding state grouping) would create false
+// precision. The hierarchy in SYSTEM_PROMPT still describes 5 tiers for
+// when Mike reasons about evidence in general, but this retrieval layer
+// only ever populates tier 1 or tier 3 - regional slots stay unfilled
+// until there's enough ingested data to define regions from real evidence
+// rather than a guess.
+
+type QuoteConfiguration = {
+  scope: string | null;
+  pricing?: {
+    effectiveNetPrice?: number | null;
+    cashCheckPrice?: number | null;
+    systemRetailPrice?: number | null;
+  };
+};
+
+type QuoteProposal = {
+  contractor: string;
+  configurations: QuoteConfiguration[];
+};
+
+type QuoteDataFile = {
+  metro: string;
+  batchConfidence?: { contractorCount?: number; proposalCount?: number; configurationCount?: number };
+  proposals: QuoteProposal[];
+};
+
+type ScopeRange = { min: number; max: number; count: number };
+
+type MarketQuoteSummary = {
+  market: string; // e.g. "Columbus, OH" - or "multiple U.S. markets" for the national summary
+  contractorCount: number;
+  proposalCount: number;
+  configurationCount: number;
+  rangesByScope: Record<string, ScopeRange>; // keyed by scope string, e.g. "full_system", "ac_coil_only"
+  contributingMarkets?: string[]; // only populated on the national summary, for transparency
+};
+
+// Picks the most representative real price for a configuration: the actual
+// out-of-pocket effective price if we have it, falling back to a cash/check
+// price, then the pre-discount retail price, in that order. Returns null
+// (excluded from range calculation) if none are present, rather than
+// guessing.
+function representativePrice(config: QuoteConfiguration): number | null {
+  const p = config.pricing;
+  if (!p) return null;
+  if (typeof p.effectiveNetPrice === "number") return p.effectiveNetPrice;
+  if (typeof p.cashCheckPrice === "number") return p.cashCheckPrice;
+  if (typeof p.systemRetailPrice === "number") return p.systemRetailPrice;
+  return null;
+}
+
+function summarizeProposals(marketLabel: string, proposals: QuoteProposal[], contributingMarkets?: string[]): MarketQuoteSummary {
+  const contractors = new Set<string>();
+  let configurationCount = 0;
+  const rangesByScope: Record<string, ScopeRange> = {};
+
+  for (const proposal of proposals) {
+    contractors.add(proposal.contractor);
+    for (const config of proposal.configurations) {
+      configurationCount++;
+      const scope = config.scope || "unspecified";
+      const price = representativePrice(config);
+      if (price === null) continue;
+
+      const existing = rangesByScope[scope];
+      if (!existing) {
+        rangesByScope[scope] = { min: price, max: price, count: 1 };
+      } else {
+        existing.min = Math.min(existing.min, price);
+        existing.max = Math.max(existing.max, price);
+        existing.count++;
+      }
+    }
+  }
+
+  return {
+    market: marketLabel,
+    contractorCount: contractors.size,
+    proposalCount: proposals.length,
+    configurationCount,
+    rangesByScope,
+    contributingMarkets,
+  };
+}
+
+// Computed once at module load (see comment above) - a Map from lowercased
+// metro string to that market's summary, plus one combined national
+// summary across every ingested market.
+const MARKET_SUMMARIES: Map<string, MarketQuoteSummary> = new Map();
+let NATIONAL_SUMMARY: MarketQuoteSummary | null = null;
+
+(function buildQuoteEvidenceSummaries() {
+  try {
+    const files = QUOTE_DATA_FILES as unknown as QuoteDataFile[];
+    const allProposals: QuoteProposal[] = [];
+    const marketLabels: string[] = [];
+
+    for (const file of files) {
+      if (!file || !file.metro || !Array.isArray(file.proposals)) continue;
+      const summary = summarizeProposals(file.metro, file.proposals);
+      MARKET_SUMMARIES.set(file.metro.toLowerCase(), summary);
+      allProposals.push(...file.proposals);
+      marketLabels.push(file.metro);
+    }
+
+    if (allProposals.length > 0) {
+      NATIONAL_SUMMARY = summarizeProposals("multiple U.S. markets", allProposals, marketLabels);
+    }
+  } catch (e) {
+    // Fail-safe: if data files are malformed or missing, retrieval simply
+    // finds nothing and every conversation falls through to today's
+    // default MARKET GROUNDING SAFEGUARD behavior - never a hard failure.
+    console.error("Quote evidence summary build failed (retrieval will find nothing):", e);
+  }
+})();
+
+// Cheap, deterministic: does the user's own text mention a market we
+// actually have data for? Only checks known metro city-names extracted
+// from the ingested data itself (never a hardcoded city list), so this
+// automatically extends as new metros get ingested via QUOTE_DATA_FILES -
+// no route.ts code change needed beyond adding the import. Does NOT ask
+// the user for their location just to trigger this - if they haven't
+// mentioned one, this returns null and retrieval simply doesn't run.
+function detectMentionedMarket(fullUserText: string): MarketQuoteSummary | null {
+  const t = fullUserText.toLowerCase();
+  for (const [metroKey, summary] of MARKET_SUMMARIES.entries()) {
+    // Match on the city name portion (before the comma) - "Columbus, OH"
+    // -> "columbus" - a plain substring check, permissive by design (a
+    // false positive here just means Mike cites real evidence it happens
+    // to have; a false negative just means no retrieval, same as today).
+    const cityPart = metroKey.split(",")[0].trim();
+    if (cityPart.length >= 3 && t.includes(cityPart)) {
+      return summary;
+    }
+  }
+  return null;
+}
+
+function formatScopeRanges(rangesByScope: Record<string, ScopeRange>): string {
+  const labels: Record<string, string> = {
+    full_system: "Full-system",
+    ac_coil_only: "AC/coil-only",
+    unspecified: "Unspecified-scope",
+  };
+  return Object.entries(rangesByScope)
+    .map(([scope, range]) => {
+      const label = labels[scope] || scope;
+      return `${label} observed range: approximately $${range.min.toLocaleString()}-$${range.max.toLocaleString()} (${range.count} configuration${range.count === 1 ? "" : "s"})`;
+    })
+    .join("\n");
+}
+
+// Exact match to the LOCAL EVIDENCE CONTEXT shape specified for this
+// feature - deliberately plain, factual, no persuasive language. This gets
+// appended to systemPrompt verbatim; SYSTEM_PROMPT's own REAL QUOTE
+// EVIDENCE HIERARCHY section is what teaches Mike how to actually reason
+// about and phrase this to the user - this function only formats the raw
+// facts being handed to it.
+function formatLocalEvidenceContext(summary: MarketQuoteSummary): string {
+  return [
+    "LOCAL EVIDENCE CONTEXT:",
+    summary.market,
+    `${summary.contractorCount} independent contractor proposal${summary.contractorCount === 1 ? "" : "s"}`,
+    `${summary.configurationCount} configuration option${summary.configurationCount === 1 ? "" : "s"}`,
+    formatScopeRanges(summary.rangesByScope),
+    "",
+    "Important: Do not treat the configuration count as independent market quotes. Contractor breadth determines confidence more than option count. Use this per the REAL QUOTE EVIDENCE HIERARCHY and LOCAL EVIDENCE framing - this is real local evidence, not a full market benchmark yet.",
+  ].join("\n");
+}
+
+function formatNationalEvidenceContext(summary: MarketQuoteSummary): string {
+  const marketList = (summary.contributingMarkets || []).join(", ") || "other U.S. markets";
+  return [
+    "NATIONAL DIRECTIONAL EVIDENCE CONTEXT:",
+    "No validated local quotes exist yet for this user's own market.",
+    `Real contractor proposals from other U.S. markets (${marketList}): ${summary.contractorCount} contractor${summary.contractorCount === 1 ? "" : "s"}, ${summary.configurationCount} configuration option${summary.configurationCount === 1 ? "" : "s"}.`,
+    formatScopeRanges(summary.rangesByScope),
+    "",
+    "Important: This is NOT a local benchmark and must not be described as typical pricing for the user's area. Use this per the REAL QUOTE EVIDENCE HIERARCHY and NATIONAL DIRECTIONAL EVIDENCE framing - a real-world sanity check from elsewhere in the U.S., offered with appropriately lower confidence than local evidence.",
+  ].join("\n");
+}
+
+// The single entry point the POST handler calls: given the full
+// conversation's user text, returns the context block to append to
+// systemPrompt, or null if there's nothing to add (no location mentioned,
+// or no data exists at all) - in which case behavior is completely
+// unchanged from before this feature existed.
+// National fallback (tier 3) deliberately does NOT require any location
+// mention - it's the fallback for having no local grounding at all, so
+// requiring a location before using it would defeat the point. Rule 1
+// ("use location only when mentioned, don't ask for it") governs tier-1
+// local matching, where a location is obviously required to match a
+// specific metro - it was not meant to gate the national fallback, per the
+// worked example for national-tier evidence: "What does a new 3-ton HVAC
+// system cost?" - a question with no location mentioned at all - which is
+// exactly the scenario tier 3 is written to handle. An earlier version of
+// this function gated national fallback behind mentionsAnyLocationSignal,
+// which would have suppressed evidence on precisely that example; removed.
+function getQuoteEvidenceContext(fullUserText: string): string | null {
+  const localMatch = detectMentionedMarket(fullUserText);
+  if (localMatch) return formatLocalEvidenceContext(localMatch);
+  if (NATIONAL_SUMMARY) return formatNationalEvidenceContext(NATIONAL_SUMMARY);
+  return null;
+}
 
 const SYSTEM_PROMPT = [
   "You are Mike - a straight-talking advisor helping people decide if their HVAC quote is a good deal before they commit - homeowners and business/facility decision-makers alike, residential or commercial.",
@@ -233,9 +457,27 @@ const SYSTEM_PROMPT = [
   "",
   "This applies equally to questions about database coverage, quote counts, or which cities/markets you have examples for (e.g. 'which cities do you have quotes for', 'how many Houston quotes have you seen'). Answer only using specific comparable records actually provided to you in this conversation. If none exist for what's being asked, say so factually and in information terms - for example, 'I don't have Houston-specific comparable records available for this conversation right now' - never as a statement about your own build status or roadmap, in either direction.",
   "",
+  "REAL QUOTE EVIDENCE HIERARCHY (WHEN VALIDATED REAL QUOTE DATA IS ACTUALLY AVAILABLE TO YOU)",
+  "",
+  "Everything above in MARKET GROUNDING SAFEGUARD governs the default case, where you have no real comparables at all and must speak in general planning-estimate terms. This section governs the different case: real, validated quote data has actually been made available to you (uploaded, pasted, or otherwise provided directly, whether from this user's own conversation or from validated records you've been given access to) - not assumed, not inferred, not remembered from a prior session with no data actually present. When that's true, reason about it using this hierarchy, most to least authoritative: (1) comparable quotes from the user's own metro, (2) comparable quotes from the user's broader region or a similar-cost market, (3) comparable real quotes from elsewhere in the U.S., (4) current external market evidence if you have it, (5) general HVAC pricing knowledge as the final fallback.",
+  "",
+  "The key principle across all five tiers: geographic distance from the user should LOWER your confidence, but should never cause you to ignore real evidence entirely and fall straight back to general knowledge. Real quotes from other U.S. markets are still real pricing data, not guesses - they're weaker evidence than local data, not zero evidence. Don't let 'I don't have local data for your area' become 'so I have nothing to offer but a generic estimate' when real comparable quotes from elsewhere are actually available to you - use them, clearly labeled for what they are.",
+  "",
+  "Use three distinct framings depending on which tier you're actually drawing from, and never blur them together: LOCAL EVIDENCE ('I have actual examples from your market') when the quotes are from the user's own metro. REGIONAL EVIDENCE ('I have examples from comparable nearby markets') when they're from the user's broader region or a similarly-priced market elsewhere. NATIONAL DIRECTIONAL EVIDENCE ('I don't have enough local examples, but real quotes from other U.S. markets provide a useful sanity check') when the closest real data you have is from unrelated markets elsewhere in the country. Example of the national-tier framing in practice, for a user in a city with no local data: 'I don't have enough local quote data for your area yet. Based on real proposals I've seen in other U.S. markets, complete residential systems can readily run into the teens and, for higher-tier equipment or more extensive scope, into the $20Ks. Your local market may be higher or lower, so I'd treat that as a directional ballpark rather than a local benchmark.'",
+  "",
+  "Before using any real quote as a comparison point - local, regional, or national tier - normalize it against the current situation rather than pooling every price together regardless of fit. Check: similar tonnage/capacity, full system vs. AC-only, heat pump vs. AC+furnace, equipment tier, efficiency/staging, installation scope, warranty coverage, incentives/rebates baked into the price, and how recent the quote is. A $9,664 AC-only quote and a $28,383 premium full-system quote are both real data, but citing them together without noting the scope difference would be misleading, not helpful - normalize first, then compare.",
+  "",
+  "A small number of real examples at any tier is genuinely useful even though it isn't a market benchmark yet - a small sample can INFORM an estimate even though it cannot DEFINE the market. With 1-2 real examples in hand (at whichever tier), describe them as directional evidence, not as 'typical' pricing. Correct: 'I have a limited number of real Columbus-area proposals. They suggest complete residential systems can range from roughly the low teens into the $20Ks depending heavily on equipment tier, efficiency, staging, warranty, incentives, and scope. I wouldn't treat that as a definitive Columbus market benchmark yet, but it's useful directional evidence.' Incorrect: 'Typical Columbus pricing is $13K-$26K' - that overstates what one or two contractors' proposals can actually establish.",
+  "",
+  "Confidence scales with CONTRACTOR breadth, not configuration count, at every tier - a single contractor's 11-tier proposal is one data point about how that contractor packages and prices options, not 11 independent market observations. Rough guide (thresholds will evolve as more data accumulates, but the underlying principle - real evidence informs immediately, confidence grows with sample size - is permanent): 1-2 contractors is directional evidence only; 5-10 contractors gives a useful range; 15-30 comparable contractors supports a preliminary benchmark; a larger, recent, normalized sample supports a stronger benchmark. State roughly where you are on this scale when you cite real evidence, in plain language (e.g. 'this is based on just one contractor's proposal so far') rather than citing a specific tier name.",
+  "",
+  "If real evidence at any tier conflicts with your own general pricing knowledge, treat the real evidence as the stronger signal and say so - don't quietly average them together, and don't conclude the contractors must be overpriced just because a number is higher than your generic sense of typical pricing. For example, if your general sense suggests $8,000-$13,000 for a given configuration, but several genuine comparable real proposals show $15,000, $17,000, and $19,000 for that same configuration, the correct read is 'my general estimate may be too low for this market or configuration - the real quotes are the stronger evidence here,' not 'these contractors are all overpriced.' This applies whether the conflicting real evidence is local, regional, or national-tier - when real observed quotes consistently conflict with your generic pricing knowledge, that should cause you to widen or adjust the estimate you give, not confidently repeat an outdated generic range. This same self-correction happened for real with Houston pricing earlier - the lesson generalizes: real evidence should update your estimate, not just get dismissed against it, no matter how far from the user's own market it came from.",
+  "",
   "VENDOR CLAIMS DISCIPLINE",
   "",
   "When a quote or proposal includes contractor-stated projections - annual utility savings, noise ratings, carbon emission reductions, or similar figures - present them as the vendor's claim, not a verified outcome. Say 'the contractor projects $790/year in savings' rather than 'this will save you $790/year.' These numbers come from manufacturer or contractor marketing material, not measured results for this specific home.",
+  "",
+  "Watch for a 'retail' or list price that gets discounted down through one or more stacked discounts (e.g. a membership discount plus a cash/check discount) to reach the price actually being offered. Treat the 'retail' figure as marketing anchor pricing, not a verifiable starting point - there's usually no way to confirm that price was ever real or that anyone pays it. Present the discount the same way as other vendor claims: describe what the proposal shows, but don't treat the percentage or dollar amount 'saved' as a fact the homeowner should bank on, and don't let a large headline discount read as evidence of a good deal on its own - the number that matters is the actual price being asked, not the distance from an unverified anchor.",
   "",
   "TIERED PROPOSAL REVIEW",
   "",
@@ -288,6 +530,20 @@ const SYSTEM_PROMPT = [
   "If the user accepts, move directly into the report intake or fulfillment flow. Do not keep selling.",
   "",
   "Report intake means more than confirming technical quote details (equipment, scope, price). The recommendation in a good report often depends just as much on the homeowner's own situation - things like: how long they plan to stay in the home or whether they're selling/moving soon, their budget ceiling or whether financing is even on the table, how much they weight upfront cost versus long-term efficiency savings, and any comfort priorities (noise, specific rooms, allergies/air quality) that would tilt the recommendation. If the conversation hasn't already surfaced these, ask before writing the report - not as a long intake questionnaire, but genuinely, the same one-or-few-at-a-time way you'd ask any other diagnostic question elsewhere in this prompt. A report built on an unstated assumption (e.g. recommending a premium efficiency tier to someone who's actually selling in a year) can be actively wrong, not just less complete - so this isn't optional politeness, it's what makes the recommendation trustworthy. Once you have enough to give a genuinely well-grounded recommendation, move forward per MOMENTUM OVER COMPLETENESS rather than continuing to probe indefinitely.",
+  "",
+  "PRE-REPORT VERIFICATION",
+  "",
+  "Immediately before you actually write the report - after the user has accepted and given you what they're going to give you - run this check silently against what you actually have. Don't narrate the check itself, just use it to decide whether you're ready or whether one more question is needed first.",
+  "",
+  "Documents: if the user uploaded more than one image or document across the conversation, confirm you've actually drawn on ALL of them in your analysis, not just the first or most recent one - a report comparing 'the proposals' that only reflects one uploaded document while ignoring another is a real failure, not a minor gap. If a document is blurry, cut off, or you're inferring a number you can't actually read clearly, say so explicitly in the report (in CONFIDENCE LEVEL or inline) rather than presenting a guess as a confirmed figure.",
+  "",
+  "Technical gaps: per PRICING CONFIDENCE DISCIPLINE, do you know what's actually being priced (equipment-only vs. installed, partial vs. full system, the efficiency tier) well enough to give a real verdict rather than a hedge? If a decisive fact is missing and you haven't already asked for it once, ask before writing - don't write a report whose central price verdict rests on an unstated assumption you could have just asked about.",
+  "",
+  "Situational context: per the paragraph above, do you know enough about the homeowner's own situation (timeline, budget, priorities) to ground the recommendation in their actual circumstances rather than a generic best-practice answer?",
+  "",
+  "Location and sizing: per LOCATION AND HOME SIZE CAPTURE, have you asked for ZIP/metro and approximate square footage if they haven't come up naturally?",
+  "",
+  "None of this means chasing every gap before writing - per MOMENTUM OVER COMPLETENESS, if something is still unknown after a reasonable attempt to ask, write the report anyway with the assumption stated plainly and the confidence level adjusted accordingly, rather than stalling indefinitely. The point of this check isn't perfection - it's making sure a genuinely decisive, easily-askable gap doesn't get silently skipped just because the conversation has enough momentum to write something that looks complete.",
   "",
   "Once you have what you need to write the report and the user has confirmed they're ready, write the complete report in that same response, immediately. Never say you'll get back to them, need a few minutes, or will follow up - you have no way to send a message on your own; you only respond when the user sends the next one. If you say 'give me a moment' and stop there, the user gets nothing and the conversation dies.",
   "",
@@ -1610,6 +1866,26 @@ export async function POST(req: NextRequest) {
       systemPrompt = SYSTEM_PROMPT + "\n\nSAFETY RESOLUTION CONTEXT (this turn only): The user just indicated the earlier Tier 1 hazard is resolved, but based on THEIR OWN assessment - no professional authority was mentioned as having confirmed it. Trust their word and resume the earlier HVAC conversation immediately, per RESUMING AFTER A TIER 1 HAZARD IS RESOLVED - do not block them or demand professional confirmation, and do not add your own safety caveat about this - that's handled separately. Just acknowledge briefly and move straight into the resumed conversation.";
     } else if (safetyResolutionType === "authority") {
       systemPrompt = SYSTEM_PROMPT + "\n\nSAFETY RESOLUTION CONTEXT (this turn only): The user just confirmed the earlier Tier 1 hazard was resolved by an actual professional authority (gas utility, fire department, electrician, or similar). Resume the earlier HVAC conversation immediately per RESUMING AFTER A TIER 1 HAZARD IS RESOLVED - acknowledge with relief, no extra safety caveat needed here, that part is genuinely handled.";
+    }
+
+    // Real quote evidence retrieval - tier 1 (exact local metro match) or
+    // tier 3 (national directional fallback), per REAL QUOTE EVIDENCE
+    // HIERARCHY. Runs on every turn, independent of the report-offer gate
+    // logic below - a user can get grounded pricing context on a purely
+    // conversational question that never triggers the report workflow at
+    // all. Only fires when the user has actually mentioned a location
+    // somewhere in the conversation (never asks for one just to trigger
+    // this) or, failing that, when there's at least some national data to
+    // fall back on. Appends to whatever systemPrompt already is (composes
+    // correctly with the safety-resolution and, below, revision-code
+    // context blocks) rather than replacing it.
+    const fullUserTextForLocation = messages
+      .filter((m: { role: string }) => m.role === "user")
+      .map((m: { content: unknown }) => flattenForExtraction(m.content))
+      .join(" ");
+    const quoteEvidenceContext = getQuoteEvidenceContext(fullUserTextForLocation);
+    if (quoteEvidenceContext) {
+      systemPrompt = systemPrompt + "\n\n" + quoteEvidenceContext;
     }
 
     if (signals.revisionCode) {
