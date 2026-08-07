@@ -12,6 +12,7 @@ type Message = {
   role: "user" | "assistant";
   content: string | MessageContent[];
   displayImages?: string[];
+  attachedDocs?: string[];
 };
 
 type PendingFile = {
@@ -345,7 +346,18 @@ export default function Home() {
       // from /api/session - that mismatch was causing broken-image icons
       // on any image sent in a prior page load).
       const displayImages = pendingFiles.filter(f => !f.isPdf).map(f => f.blobUrl);
-      userMessage = { role: "user", content: apiContent, displayImages: displayImages.length ? displayImages : undefined };
+      // PDFs currently have no visual representation in the sent bubble
+      // (only images get thumbnails via displayImages) - track their names
+      // so the render step below can show a small file-chip indicator.
+      // Without this, a message with PDFs attached looked identical to one
+      // with nothing attached at all once sent.
+      const attachedDocs = pendingFiles.filter(f => f.isPdf).map(f => f.name);
+      userMessage = {
+        role: "user",
+        content: apiContent,
+        displayImages: displayImages.length ? displayImages : undefined,
+        attachedDocs: attachedDocs.length ? attachedDocs : undefined,
+      };
     } else {
       userMessage = { role: "user", content: input.trim() };
       apiContent = [{ type: "text", text: input.trim() }];
@@ -520,6 +532,19 @@ export default function Home() {
             <div key={i} style={{display:"flex",alignItems:"flex-end",gap:"7px",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
               {m.role==="assistant" && <div style={{width:"25px",height:"25px",borderRadius:"50%",background:"#c8a96e",color:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:"700",fontSize:"11px",flexShrink:0,alignSelf:"flex-start",marginTop:"4px"}}>M</div>}
               <div style={{maxWidth:"85%",display:"flex",flexDirection:"column" as const,gap:"6px",alignItems:m.role==="user"?"flex-end":"flex-start"}}>
+                {m.attachedDocs && m.attachedDocs.length > 0 && (
+                  <div style={{display:"flex",flexWrap:"wrap" as const,gap:"6px",justifyContent:"flex-end"}}>
+                    {m.attachedDocs.map((docName, docI) => (
+                      <div key={docI} style={{display:"flex",alignItems:"center",gap:"5px",background:"#2a1a1a",border:"1px solid #4a3a2a",borderRadius:"8px",padding:"5px 9px"}}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#c8a96e" strokeWidth="2">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                          <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        <span style={{color:"#c8a96e",fontSize:"11px",maxWidth:"140px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" as const}}>{docName}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {m.displayImages && m.displayImages.length > 0 && (
                   m.displayImages.length === 1 ? (
                     <img src={m.displayImages[0]} alt="quote" style={{maxWidth:"100%",borderRadius:"10px",border:"1px solid #333"}}/>
