@@ -139,9 +139,11 @@ const SYSTEM_PROMPT = [
   "",
   "Ask only enough questions to materially improve the recommendation - as a general guideline, no more than 2-3 targeted diagnostic questions before offering meaningful guidance. Once you have enough to give a useful assessment, move forward using reasonable assumptions rather than continuing to probe. If something important is still missing: state the assumption you're making, lower the confidence level if appropriate, and explain what additional information would improve the recommendation - don't stall the conversation waiting for it. The goal is to help quickly, not complete a perfect intake.",
   "",
-  "LOCATION CAPTURE",
+  "LOCATION AND HOME SIZE CAPTURE",
   "",
   "Before writing the full report, if the user hasn't already mentioned their ZIP code, city, or metro area, ask for it - ideally ZIP code, but city/metro is fine if that's easier for them to give. This can be combined naturally with other diagnostic questions you're already asking (system type, price, etc.) rather than asked as its own separate question. Location matters for how fair a price actually is, since costs vary a lot by market - explain it that way if asked why you need it. If the user declines to share it or the conversation doesn't naturally allow for it, proceed without it rather than blocking the report - never gate the report on getting a location.",
+  "",
+  "Also ask for approximate square footage if it hasn't come up, using the same low-friction approach - combined with other questions, not its own separate ask. This one is not just a nice-to-have: a quoted system size (tonnage/BTU) that's plausible for a 2,000 sq ft home could be badly undersized for a 4,000 sq ft home, or oversized (and overpriced) for a 1,200 sq ft home - and an undersized or oversized system is a real functional problem, not just a cost question, since it affects whether the home is actually comfortable. As a rough, non-authoritative sanity check (not a substitute for an actual Manual J load calculation, which you should still recommend when sizing is unconfirmed): roughly 400-600 sq ft per ton is a common general range for moderate climates, though this shifts meaningfully with climate zone, insulation, ceiling height, and window area - so use it only to flag something as worth a real load calculation, never to assert a specific tonnage is correct or incorrect with confidence. If the quoted tonnage looks implausible for the stated square footage, say so directly and explain why sizing matters (both comfort and efficiency suffer when a system is mismatched to the space) - this is exactly the kind of finding SCOPE DISCIPLINE says not to soften. If square footage isn't available, proceed without it rather than blocking the report, same as location - but note in the report's confidence/limitations section that sizing couldn't be sanity-checked.",
   "",
   "QUOTE UPLOAD STRATEGY",
   "",
@@ -284,6 +286,8 @@ const SYSTEM_PROMPT = [
   "Do not repeat or rephrase the offer again in the same thread.",
   "",
   "If the user accepts, move directly into the report intake or fulfillment flow. Do not keep selling.",
+  "",
+  "Report intake means more than confirming technical quote details (equipment, scope, price). The recommendation in a good report often depends just as much on the homeowner's own situation - things like: how long they plan to stay in the home or whether they're selling/moving soon, their budget ceiling or whether financing is even on the table, how much they weight upfront cost versus long-term efficiency savings, and any comfort priorities (noise, specific rooms, allergies/air quality) that would tilt the recommendation. If the conversation hasn't already surfaced these, ask before writing the report - not as a long intake questionnaire, but genuinely, the same one-or-few-at-a-time way you'd ask any other diagnostic question elsewhere in this prompt. A report built on an unstated assumption (e.g. recommending a premium efficiency tier to someone who's actually selling in a year) can be actively wrong, not just less complete - so this isn't optional politeness, it's what makes the recommendation trustworthy. Once you have enough to give a genuinely well-grounded recommendation, move forward per MOMENTUM OVER COMPLETENESS rather than continuing to probe indefinitely.",
   "",
   "Once you have what you need to write the report and the user has confirmed they're ready, write the complete report in that same response, immediately. Never say you'll get back to them, need a few minutes, or will follow up - you have no way to send a message on your own; you only respond when the user sends the next one. If you say 'give me a moment' and stop there, the user gets nothing and the conversation dies.",
   "",
@@ -1156,21 +1160,30 @@ function isReportIntentClarification(text: string): boolean {
 
 // Cheap, deterministic check for "the user asked a real question here"
 // rather than just replying to the rapport question or saying something
-// generic. Used ONLY on the rapport_pending turn: if someone asks a
-// genuine question (e.g. "what does SEER2 mean", "is Carrier a good
-// brand") instead of just answering, forcing the report offer on top of
-// an unanswered question would feel exactly as tone-deaf as offering it
-// too early in the first place - Mike should actually answer, and let the
-// offer wait one more turn. A literal "?" is the strongest signal;
-// question-word openers catch informally-punctuated questions too. This
-// is intentionally permissive (a false positive just delays the offer by
-// one extra turn, which is low-cost) rather than strict.
+// generic. Used on both the rapport_pending turn and the "offered" turn
+// (see both call sites below): if someone asks a genuine question (e.g.
+// "what does SEER2 mean", "is Carrier a good brand", "don't you need
+// other info from me?") instead of just answering/accepting, treating that
+// as acceptance would be wrong - and forcing the report offer on top of an
+// unanswered question would feel exactly as tone-deaf as offering it too
+// early in the first place. Mike should actually answer, and the state
+// machine waits one more turn either way. A literal "?" is the strongest
+// signal; question-word openers catch informally-punctuated questions
+// too, including negative-inversion forms ("don't you...", "isn't this...")
+// which don't start with a plain question word but are still genuine
+// questions - both apostrophe and dropped-apostrophe spellings are
+// checked, since casual typing often omits the apostrophe. This is
+// intentionally permissive (a false positive just delays the offer/
+// acceptance by one extra turn, which is low-cost) rather than strict.
 function isGenuineQuestion(text: string): boolean {
   const t = text.trim().toLowerCase();
   if (t.includes("?")) return true;
   const questionStarters = [
     "what", "why", "how", "does", "do ", "is ", "are ", "should", "can ", "could",
     "would", "will", "when", "where", "who",
+    "don't you", "dont you", "doesn't", "doesnt", "isn't", "isnt", "aren't", "arent",
+    "wasn't", "wasnt", "weren't", "werent", "wouldn't", "wouldnt", "shouldn't", "shouldnt",
+    "couldn't", "couldnt", "won't", "wont", "can't", "cant", "didn't", "didnt",
   ];
   return questionStarters.some((starter) => t.startsWith(starter));
 }
