@@ -1,0 +1,598 @@
+{
+  "metro": "Columbus, OH",
+  "zipCode": "43219",
+  "dateCollected": "2026-08-07",
+  "sourceType": "real_contractor_proposal",
+  "notes": "Two independent real-world contractor proposals for the same customer's HVAC replacement decision. Customer PII (name, address, personal email/phone) intentionally excluded from this record - only contractor business identity and pricing/equipment data are stored, consistent with the PII-exclusion rule already used elsewhere (attachment inspection).",
+
+  "batchConfidence": {
+    "contractorCount": 2,
+    "proposalCount": 2,
+    "configurationCount": 15,
+    "confidenceTier": "directional_evidence",
+    "confidenceTierNote": "1-2 contractors = directional evidence only. Per the evidence hierarchy: informs pricing estimates, does not define a market benchmark. Track separately from configurationCount - one contractor offering 11 tiered options is NOT 11 independent market observations."
+  },
+
+  "proposals": [
+    {
+      "proposalId": "buckeye-columbus-2026-08",
+      "contractor": "Buckeye Heating Cooling and Plumbing",
+      "contractorCity": "Worthington, OH",
+      "proposalDate": "2026-08-04",
+      "expirationDate": "2026-08-11",
+      "configurationCount": 11,
+      "configurationCountNote": "1 contractor, 1 proposal, 11 tiered configuration options - counts as ONE proposal-level observation for confidence purposes, not 11.",
+      "configurations": [
+        {
+          "configId": "buckeye-carrier-full-signature-plus",
+          "scope": "full_system",
+          "brand": "Carrier",
+          "tierName": "Member Signature+ / Infinity",
+          "equipment": {
+            "condenser": { "model": "26VNA136W003", "type": "Variable Speed Inverter R-454B (A2L)", "seer2": "Up to 21" },
+            "furnace": { "model": "59MN7C060C17-14", "btu": 60000, "afue": "97%", "stage": "Variable Speed Modulating" },
+            "coil": "CVAVA3617XMA",
+            "thermostat": "SYSTXCCWIC01-C - WiFi Programmable Touch Screen"
+          },
+          "pricing": {
+            "systemRetailPrice": 22365,
+            "rebatesCredits": [
+              { "name": "Costco Shop Card", "amount": 2237, "eligibilityNote": "mail-in rebate" },
+              { "name": "Costco Exec Member Credit", "amount": 447, "eligibilityNote": "requires Costco Executive membership specifically - not available to all customers" }
+            ],
+            "totalRebatesCredits": 2684,
+            "cashCheckPrice": null,
+            "effectiveNetPrice": 19681,
+            "effectiveNetPriceNote": "assumes homeowner qualifies for and successfully files both rebates, including Costco Exec Member status",
+            "financing": { "monthlyPayment": 282, "termMonths": 180, "apr": 12.99 }
+          },
+          "warranty": {
+            "parts": "10 year (Costco AIG upgrade, full system)",
+            "labor": "10 year (Costco AIG upgrade, full system)",
+            "workmanship": null,
+            "heatExchanger": "Limited Life",
+            "extendedUpgrade": "Costco AIG Warranty Upgrade replaces/supplements manufacturer OEM warranty - service-plan-based, not confirmed transferable to a future homeowner"
+          },
+          "addOns": [
+            "CAIRFree Heating and Cooling Maintenance - 1 Year Membership",
+            "Surge Protector",
+            "Duct Cleaning (included)",
+            "Honeywell F100 Media Air Cleaner (5\")",
+            "Permit"
+          ],
+          "contractorClaims": null
+        },
+        {
+          "configId": "buckeye-carrier-full-comfort-plus",
+          "scope": "full_system",
+          "brand": "Carrier",
+          "tierName": "Member Comfort Plus / Performance",
+          "equipment": {
+            "condenser": { "model": "26SPA630W003", "type": "Single Stage R-454B (A2L)", "seer2": "Up to 16" },
+            "furnace": { "model": "59TN7A060C17-16", "btu": 60000, "afue": "97%", "stage": "Variable Speed Two Stage Multipoise" },
+            "coil": "CVAVA3017XMA",
+            "thermostat": "SYSTXCCWIC01-C - WiFi Programmable Touch Screen"
+          },
+          "pricing": {
+            "systemRetailPrice": 19948,
+            "rebatesCredits": [
+              { "name": "Costco Shop Card", "amount": 1995, "eligibilityNote": "mail-in rebate" },
+              { "name": "Costco Exec Member Credit", "amount": 399, "eligibilityNote": "requires Costco Executive membership specifically" }
+            ],
+            "totalRebatesCredits": 2394,
+            "cashCheckPrice": null,
+            "effectiveNetPrice": 17554,
+            "financing": { "monthlyPayment": 251, "termMonths": 180, "apr": 12.99 }
+          },
+          "warranty": {
+            "parts": "10 year (Costco AIG upgrade, full system)",
+            "labor": "10 year (Costco AIG upgrade, full system)",
+            "workmanship": null,
+            "heatExchanger": "Limited Life",
+            "extendedUpgrade": "Costco AIG Warranty Upgrade - same transferability caveat as above"
+          },
+          "addOns": [
+            "CAIRFree Heating and Cooling Maintenance - 1 Year Membership",
+            "Surge Protector",
+            "Duct Cleaning (included)",
+            "Honeywell F100 Media Air Cleaner (5\")",
+            "Permit"
+          ],
+          "contractorClaims": null
+        },
+        {
+          "configId": "buckeye-carrier-full-comfort-mid",
+          "scope": "full_system",
+          "brand": "Carrier",
+          "tierName": "Member Comfort (option 3/4)",
+          "equipment": {
+            "condenser": { "model": "26SPA630W003", "type": "Single Stage R-454B (A2L)", "seer2": "Up to 16" },
+            "furnace": { "model": "59SC6A060M17-16", "btu": 60000, "afue": "96%", "stage": "Multi-Speed Single Stage" },
+            "coil": "CVAVA3017XMA",
+            "thermostat": "YTHX1200W7/U - Programmable Touch Screen"
+          },
+          "pricing": {
+            "systemRetailPrice": 18806,
+            "rebatesCredits": [
+              { "name": "Costco Shop Card", "amount": 1881 },
+              { "name": "Costco Exec Member Credit", "amount": 376, "eligibilityNote": "requires Costco Executive membership specifically" }
+            ],
+            "totalRebatesCredits": 2257,
+            "cashCheckPrice": null,
+            "effectiveNetPrice": 16549,
+            "financing": { "monthlyPayment": 237, "termMonths": 180, "apr": 12.99 }
+          },
+          "warranty": {
+            "parts": "10 year (Costco AIG upgrade, full system)",
+            "labor": "10 year (Costco AIG upgrade, full system)",
+            "workmanship": null,
+            "heatExchanger": "20 Year Part",
+            "extendedUpgrade": "Costco AIG Warranty Upgrade - same transferability caveat as above"
+          },
+          "addOns": [
+            "CAIRFree Heating and Cooling Maintenance - 1 Year Membership",
+            "Duct Cleaning (included)",
+            "Honeywell F100 Media Air Cleaner (5\")",
+            "Permit"
+          ],
+          "contractorClaims": null
+        },
+        {
+          "configId": "buckeye-carrier-full-comfort-entry",
+          "scope": "full_system",
+          "brand": "Carrier",
+          "tierName": "Member Comfort (option 4/4, entry)",
+          "equipment": {
+            "condenser": { "model": "26SCA430N003", "type": "Single Stage R-454B (A2L)", "seer2": "Up to 13.4" },
+            "furnace": { "model": "59SC6A060M17-16", "btu": 60000, "afue": "96%", "stage": "Multi-Speed Single Stage" },
+            "coil": "CVAVA3017XMA",
+            "thermostat": "YTHX1200W7/U - Programmable Touch Screen"
+          },
+          "pricing": {
+            "systemRetailPrice": 17174,
+            "rebatesCredits": [
+              { "name": "Costco Shop Card", "amount": 1717 },
+              { "name": "Costco Exec Member Credit", "amount": 343, "eligibilityNote": "requires Costco Executive membership specifically" }
+            ],
+            "totalRebatesCredits": 2060,
+            "cashCheckPrice": null,
+            "effectiveNetPrice": 15114,
+            "financing": { "monthlyPayment": 216, "termMonths": 180, "apr": 12.99 }
+          },
+          "warranty": {
+            "parts": "10 year (Costco AIG upgrade, full system)",
+            "labor": "10 year (Costco AIG upgrade, full system)",
+            "workmanship": null,
+            "heatExchanger": "20 Year Part",
+            "extendedUpgrade": "Costco AIG Warranty Upgrade - same transferability caveat as above"
+          },
+          "addOns": [
+            "CAIRFree Heating and Cooling Maintenance - 1 Year Membership",
+            "Duct Cleaning (included)",
+            "Honeywell F100 Media Air Cleaner (5\")",
+            "Permit"
+          ],
+          "contractorClaims": null
+        },
+        {
+          "configId": "buckeye-lennox-full-signature-plus",
+          "scope": "full_system",
+          "brand": "Lennox",
+          "tierName": "Member Signature+ / Signature",
+          "equipment": {
+            "condenser": { "model": "SL25KCV-036-230A", "type": "Variable Capacity R-454B (A2L)", "seer2": "Up to 26" },
+            "furnace": { "model": "SLP99UH070XV36BK", "btu": 70000, "afue": "99%", "stage": "Variable Speed Modulating Upflow" },
+            "coil": "CK40CT-36B-71",
+            "thermostat": "S40 - WiFi Programmable Touch Screen"
+          },
+          "pricing": {
+            "systemRetailPrice": 28383,
+            "rebatesCredits": [
+              { "name": "Costco Shop Card", "amount": 2838 },
+              { "name": "Costco Exec Member Credit", "amount": 568, "eligibilityNote": "requires Costco Executive membership specifically" }
+            ],
+            "totalRebatesCredits": 3406,
+            "cashCheckPrice": null,
+            "effectiveNetPrice": 24977,
+            "financing": { "monthlyPayment": 358, "termMonths": 180, "apr": 12.99 }
+          },
+          "warranty": {
+            "parts": "10 year (Costco AIG upgrade, full system)",
+            "labor": "10 year (Costco AIG upgrade, full system)",
+            "workmanship": null,
+            "heatExchanger": "Limited Life",
+            "extendedUpgrade": "Costco AIG Warranty Upgrade - same transferability caveat as above"
+          },
+          "addOns": [
+            "CAIRFree Heating and Cooling Maintenance - 1 Year Membership",
+            "Surge Protector",
+            "Honeywell F100 Media Air Cleaner (5\")",
+            "Permit"
+          ],
+          "contractorClaims": null
+        },
+        {
+          "configId": "buckeye-lennox-full-signature",
+          "scope": "full_system",
+          "brand": "Lennox",
+          "tierName": "Member Signature / Elite",
+          "equipment": {
+            "condenser": { "model": "EL18KCV-036-230A", "type": "Variable Capacity R-454B (A2L)", "seer2": "Up to 19.5" },
+            "furnace": { "model": "SLP99UH070XV36BK", "btu": 70000, "afue": "99%", "stage": "Variable Speed Modulating Upflow" },
+            "coil": "CK40CT-36B-71",
+            "thermostat": "S40 - WiFi Programmable Touch Screen"
+          },
+          "pricing": {
+            "systemRetailPrice": 22371,
+            "rebatesCredits": [
+              { "name": "Costco Shop Card", "amount": 2237 },
+              { "name": "Costco Exec Member Credit", "amount": 447, "eligibilityNote": "requires Costco Executive membership specifically" }
+            ],
+            "totalRebatesCredits": 2684,
+            "cashCheckPrice": null,
+            "effectiveNetPrice": 19687,
+            "financing": { "monthlyPayment": 282, "termMonths": 180, "apr": 12.99 }
+          },
+          "warranty": {
+            "parts": "10 year (Costco AIG upgrade, full system)",
+            "labor": "10 year (Costco AIG upgrade, full system)",
+            "workmanship": null,
+            "heatExchanger": "Limited Life",
+            "extendedUpgrade": "Costco AIG Warranty Upgrade - same transferability caveat as above"
+          },
+          "addOns": [
+            "CAIRFree Heating and Cooling Maintenance - 1 Year Membership",
+            "Surge Protector",
+            "Honeywell F100 Media Air Cleaner (5\")",
+            "Permit"
+          ],
+          "contractorClaims": null
+        },
+        {
+          "configId": "buckeye-lennox-full-advantage",
+          "scope": "full_system",
+          "brand": "Lennox",
+          "tierName": "Member Advantage / Merit",
+          "equipment": {
+            "condenser": { "model": "ML17KC2-036-230A", "type": "Two Stage R-454B (A2L)", "seer2": "Up to 17" },
+            "furnace": { "model": "EL297UH070XV-K", "btu": 70000, "afue": "97%", "stage": "Variable Speed Two Stage Upflow" },
+            "coil": "CK40CT-36B-71",
+            "thermostat": "S40 - WiFi Programmable Touch Screen"
+          },
+          "pricing": {
+            "systemRetailPrice": 20438,
+            "rebatesCredits": [
+              { "name": "Costco Shop Card", "amount": 2044 },
+              { "name": "Costco Exec Member Credit", "amount": 409, "eligibilityNote": "requires Costco Executive membership specifically" }
+            ],
+            "totalRebatesCredits": 2453,
+            "cashCheckPrice": null,
+            "effectiveNetPrice": 17985,
+            "financing": { "monthlyPayment": 258, "termMonths": 180, "apr": 12.99 }
+          },
+          "warranty": {
+            "parts": "10 year (Costco AIG upgrade, full system)",
+            "labor": "10 year (Costco AIG upgrade, full system)",
+            "workmanship": null,
+            "heatExchanger": "Limited Life",
+            "extendedUpgrade": "Costco AIG Warranty Upgrade - same transferability caveat as above"
+          },
+          "addOns": [
+            "CAIRFree Heating and Cooling Maintenance - 1 Year Membership",
+            "Honeywell F100 Media Air Cleaner (5\")",
+            "Permit"
+          ],
+          "contractorClaims": null
+        },
+        {
+          "configId": "buckeye-lennox-full-comfort",
+          "scope": "full_system",
+          "brand": "Lennox",
+          "tierName": "Member Comfort / Elite (entry Lennox)",
+          "equipment": {
+            "condenser": { "model": "EL15KC1-030-230A", "type": "Single Stage R-454B (A2L)", "seer2": "Up to 15" },
+            "furnace": { "model": "ML196UH070XE-K", "btu": 70000, "afue": "96%", "stage": "Constant Torque Single Stage" },
+            "coil": "CK40CT-71",
+            "thermostat": "YTHX1200W7/U - Programmable Touch Screen"
+          },
+          "pricing": {
+            "systemRetailPrice": 17105,
+            "rebatesCredits": [
+              { "name": "Costco Shop Card", "amount": 1711 },
+              { "name": "Costco Exec Member Credit", "amount": 342, "eligibilityNote": "requires Costco Executive membership specifically" }
+            ],
+            "totalRebatesCredits": 2053,
+            "cashCheckPrice": null,
+            "effectiveNetPrice": 15052,
+            "financing": { "monthlyPayment": 216, "termMonths": 180, "apr": 12.99 }
+          },
+          "warranty": {
+            "parts": "10 year (Costco AIG upgrade, full system)",
+            "labor": "10 year (Costco AIG upgrade, full system)",
+            "workmanship": null,
+            "heatExchanger": "20 Year Part",
+            "extendedUpgrade": "Costco AIG Warranty Upgrade - same transferability caveat as above"
+          },
+          "addOns": ["Honeywell F100 Media Air Cleaner (5\")", "Permit"],
+          "contractorClaims": null
+        },
+        {
+          "configId": "buckeye-lennox-full-value",
+          "scope": "full_system",
+          "brand": "Lennox",
+          "tierName": "Member Value / Merit (lowest full system)",
+          "equipment": {
+            "condenser": { "model": "ML13KC1-030-230A", "type": "Single Stage R-454B (A2L)", "seer2": "Up to 16" },
+            "furnace": { "model": "ML193UH070XE-K", "btu": 70000, "afue": "93%", "stage": "Constant Torque Single Stage" },
+            "coil": "CK40CT-71",
+            "thermostat": "YTHX1200W7/U - Programmable Touch Screen"
+          },
+          "pricing": {
+            "systemRetailPrice": 15870,
+            "rebatesCredits": [
+              { "name": "Costco Shop Card", "amount": 1587 },
+              { "name": "Costco Exec Member Credit", "amount": 317, "eligibilityNote": "requires Costco Executive membership specifically" }
+            ],
+            "totalRebatesCredits": 1904,
+            "cashCheckPrice": null,
+            "effectiveNetPrice": 13966,
+            "financing": { "monthlyPayment": 200, "termMonths": 180, "apr": 12.99 }
+          },
+          "warranty": {
+            "parts": "10 year (Costco AIG upgrade, full system)",
+            "labor": "10 year (Costco AIG upgrade, full system)",
+            "workmanship": null,
+            "heatExchanger": "20 Year Part",
+            "extendedUpgrade": "Costco AIG Warranty Upgrade - same transferability caveat as above"
+          },
+          "addOns": ["Honeywell F100 Media Air Cleaner (5\")", "Permit"],
+          "contractorClaims": null
+        },
+        {
+          "configId": "buckeye-carrier-accoil-comfort",
+          "scope": "ac_coil_only",
+          "scopeNote": "AC/coil replacement only - furnace NOT included, existing furnace remains. Not directly comparable to full_system configs above.",
+          "brand": "Carrier",
+          "tierName": "Member Comfort AC/Coil",
+          "equipment": {
+            "condenser": { "model": "26SPA630W003", "type": "Single Stage R-454B (A2L)", "seer2": "Up to 16" },
+            "furnace": null,
+            "coil": "CVAVA3017XMA",
+            "thermostat": null
+          },
+          "pricing": {
+            "systemRetailPrice": 12405,
+            "rebatesCredits": [
+              { "name": "Costco Shop Card", "amount": 1241 },
+              { "name": "Costco Exec Member Credit", "amount": 248, "eligibilityNote": "requires Costco Executive membership specifically" }
+            ],
+            "totalRebatesCredits": 1489,
+            "cashCheckPrice": null,
+            "effectiveNetPrice": 10916,
+            "financing": { "monthlyPayment": 156, "termMonths": 180, "apr": 12.99 }
+          },
+          "warranty": {
+            "parts": "10 year (Costco AIG upgrade, PARTIAL system - AC/coil only, does not cover existing furnace)",
+            "labor": "10 year (Costco AIG upgrade, PARTIAL system)",
+            "workmanship": null,
+            "heatExchanger": null,
+            "extendedUpgrade": "Costco AIG Warranty Upgrade - Partial System - same transferability caveat as above"
+          },
+          "addOns": ["CAIRFree Heating and Cooling Maintenance - 1 Year Membership", "Duct Cleaning (included)", "Permit"],
+          "contractorClaims": null
+        },
+        {
+          "configId": "buckeye-carrier-accoil-value",
+          "scope": "ac_coil_only",
+          "scopeNote": "AC/coil replacement only - furnace NOT included, existing furnace remains. Not directly comparable to full_system configs above.",
+          "brand": "Carrier",
+          "tierName": "Member Value AC/Coil (lowest option overall)",
+          "equipment": {
+            "condenser": { "model": "26SCA430N003", "type": "Single Stage R-454B (A2L)", "seer2": "Up to 13.4" },
+            "furnace": null,
+            "coil": "CVAVA3017XMA",
+            "thermostat": null
+          },
+          "pricing": {
+            "systemRetailPrice": 10982,
+            "rebatesCredits": [
+              { "name": "Costco Shop Card", "amount": 1098 },
+              { "name": "Costco Exec Member Credit", "amount": 220, "eligibilityNote": "requires Costco Executive membership specifically" }
+            ],
+            "totalRebatesCredits": 1318,
+            "cashCheckPrice": null,
+            "effectiveNetPrice": 9664,
+            "financing": { "monthlyPayment": 138, "termMonths": 180, "apr": 12.99 }
+          },
+          "warranty": {
+            "parts": "10 year (Costco AIG upgrade, PARTIAL system - AC/coil only)",
+            "labor": "10 year (Costco AIG upgrade, PARTIAL system)",
+            "workmanship": null,
+            "heatExchanger": null,
+            "extendedUpgrade": "Costco AIG Warranty Upgrade - Partial System - same transferability caveat as above"
+          },
+          "addOns": ["CAIRFree Heating and Cooling Maintenance - 1 Year Membership", "Duct Cleaning (included)", "Permit"],
+          "contractorClaims": null
+        }
+      ]
+    },
+
+    {
+      "proposalId": "eco-rishis-solutions-columbus-2026-08",
+      "contractor": "Eco Plumbers, Electricians, HVAC Technicians",
+      "contractorCity": "Columbus, OH",
+      "proposalDate": null,
+      "expirationDate": "2026-08-17",
+      "configurationCount": 4,
+      "configurationCountNote": "1 contractor, 1 proposal, 4 tiered configuration options (Platinum/Gold/Silver/Bronze) - counts as ONE proposal-level observation for confidence purposes, not 4.",
+      "scopeNote": "All four tiers are full_system (AC + furnace). Retail price shown is a pre-discount list price with a membership discount and a cash/check discount stacked on top before reaching 'Investment Today' - the retail figure has no independent verification and should be treated as marketing anchor pricing, not a real market price point.",
+      "configurations": [
+        {
+          "configId": "eco-platinum",
+          "scope": "full_system",
+          "brand": "Tempstar",
+          "tierName": "Platinum (Variable Speed)",
+          "equipment": {
+            "condenser": { "model": "Tempstar Ion 21 (T5A1V36AKAWA)", "type": "Variable Speed", "seer2": "Up to 21" },
+            "furnace": { "model": "Tempstar Ion 98 (F97CMN0601714A)", "afue": "Up to 97%", "stage": "Variable Speed" },
+            "coil": "Tempstar V Evaporator Coil (EVD5X36M17A)",
+            "thermostat": "Tempstar Ion System Control (SYST0101CW)"
+          },
+          "pricing": {
+            "systemRetailPrice": 30571.02,
+            "retailPriceNote": "unverified list price - see proposal-level scopeNote",
+            "discounts": [
+              { "name": "EcoFi Membership Discount", "amount": 3057.10 },
+              { "name": "Cash/Card/Check Discount", "amount": 1834.26 }
+            ],
+            "rebatesCredits": [],
+            "cashCheckPrice": 25679.66,
+            "effectiveNetPrice": 25679.66,
+            "financing": null
+          },
+          "warranty": {
+            "parts": "10 year",
+            "labor": "10 year",
+            "workmanship": null,
+            "heatExchanger": null,
+            "extendedUpgrade": null
+          },
+          "addOns": [
+            "2026 Annual EcoFi Advantage Membership (+$340.00, pre-added/not optional per proposal)"
+          ],
+          "addOnsNote": "Proposal lists numerous additional optional add-ons (duct cleaning, humidifier, tankless water heater, air purifier, UV lamp, scent device, mini-split) NOT included in the price above - excluded from this record since they were not selected/added in the source proposal.",
+          "contractorClaims": {
+            "potentialUtilitySavingsPerYear": 790,
+            "outdoorUnitNoise": "Quiet - 55 dBA",
+            "carbonEmissionReduction": "20% less",
+            "claimSourceNote": "These are contractor/manufacturer marketing projections, not measured results - store and present as claims only, never as verified facts."
+          }
+        },
+        {
+          "configId": "eco-gold",
+          "scope": "full_system",
+          "brand": "Tempstar",
+          "tierName": "Gold (Two Stage) - marked 'Popular' by vendor",
+          "equipment": {
+            "condenser": { "model": "Tempstar Ion 18 (T5A8T36AKAWA)", "type": "Two Stage", "seer2": "Up to 18" },
+            "furnace": { "model": "Tempstar Ion 97 (F97CTN0601716A)", "afue": "Up to 97%", "stage": "Two Stage" },
+            "coil": "Tempstar V Evaporator Coil (EVD5X36M17A)",
+            "thermostat": "Tempstar Ion System Control (SYST0101CW)"
+          },
+          "pricing": {
+            "systemRetailPrice": 26597.76,
+            "retailPriceNote": "unverified list price - see proposal-level scopeNote",
+            "discounts": [
+              { "name": "EcoFi Membership Discount", "amount": 2659.78 },
+              { "name": "Cash/Card/Check Discount", "amount": 1595.87 }
+            ],
+            "rebatesCredits": [],
+            "cashCheckPrice": 22342.11,
+            "effectiveNetPrice": 22342.11,
+            "financing": null
+          },
+          "warranty": {
+            "parts": "10 year",
+            "labor": "10 year",
+            "workmanship": null,
+            "heatExchanger": null,
+            "extendedUpgrade": null
+          },
+          "addOns": [
+            "2026 Annual EcoFi Advantage Membership (+$340.00, pre-added/not optional per proposal)"
+          ],
+          "addOnsNote": "Same as Platinum tier - numerous optional add-ons excluded from this record since not selected in source proposal.",
+          "contractorClaims": {
+            "potentialUtilitySavingsPerYear": 763,
+            "outdoorUnitNoise": "Soft - 67 dBA",
+            "carbonEmissionReduction": "20% less",
+            "claimSourceNote": "Contractor/manufacturer marketing projections, not measured results."
+          }
+        },
+        {
+          "configId": "eco-silver",
+          "scope": "full_system",
+          "brand": "Tempstar",
+          "tierName": "Silver (Two Stage)",
+          "equipment": {
+            "condenser": { "model": "Tempstar Performance 18 (N5A8T36AKAWA)", "type": "Two Stage", "seer2": "Up to 17" },
+            "furnace": { "model": "Tempstar QuietComfort 97 (F97VTN0601716A)", "afue": "Up to 97%", "stage": "Two Stage" },
+            "coil": "Tempstar V Evaporator Coil (EVD5X36M17A)",
+            "thermostat": null
+          },
+          "pricing": {
+            "systemRetailPrice": 22162.47,
+            "retailPriceNote": "unverified list price - see proposal-level scopeNote",
+            "discounts": [
+              { "name": "EcoFi Membership Discount", "amount": 2216.25 },
+              { "name": "Cash/Card/Check Discount", "amount": 1329.75 }
+            ],
+            "rebatesCredits": [],
+            "cashCheckPrice": 18616.47,
+            "effectiveNetPrice": 18616.47,
+            "financing": null
+          },
+          "warranty": {
+            "parts": "10 year",
+            "labor": "10 year",
+            "workmanship": null,
+            "heatExchanger": null,
+            "extendedUpgrade": null
+          },
+          "addOns": [
+            "2026 Annual EcoFi Advantage Membership (+$340.00, pre-added/not optional per proposal)"
+          ],
+          "addOnsNote": "Same as Platinum tier - numerous optional add-ons excluded from this record since not selected in source proposal.",
+          "contractorClaims": {
+            "potentialUtilitySavingsPerYear": 752,
+            "outdoorUnitNoise": "Soft - 68 dBA",
+            "carbonEmissionReduction": "19% less",
+            "claimSourceNote": "Contractor/manufacturer marketing projections, not measured results."
+          }
+        },
+        {
+          "configId": "eco-bronze",
+          "scope": "full_system",
+          "brand": "Tempstar",
+          "tierName": "Bronze (Single Stage)",
+          "equipment": {
+            "condenser": { "model": "Tempstar Performance N5A4S (N5A4S30AKANA)", "type": "Single Stage", "seer2": "Up to 13.4" },
+            "furnace": { "model": "Tempstar Performance 96 (N96MSN0601716A)", "afue": "Up to 96%", "stage": "Single Stage" },
+            "coil": "Tempstar V Evaporator Coil (EVD5X30M17A)",
+            "thermostat": null
+          },
+          "pricing": {
+            "systemRetailPrice": 15162.46,
+            "retailPriceNote": "unverified list price - see proposal-level scopeNote",
+            "discounts": [
+              { "name": "EcoFi Membership Discount", "amount": 1516.25 },
+              { "name": "Cash/Card/Check Discount", "amount": 909.75 }
+            ],
+            "rebatesCredits": [],
+            "cashCheckPrice": 12736.46,
+            "effectiveNetPrice": 12736.46,
+            "financing": null
+          },
+          "warranty": {
+            "parts": "10 year",
+            "labor": "1 year",
+            "workmanship": null,
+            "heatExchanger": null,
+            "extendedUpgrade": null,
+            "warrantyFlagNote": "Labor warranty drops sharply to 1 year on this tier vs 10 years on the other three tiers - a warranty cliff, not a gradual step-down. Worth flagging explicitly per TIERED PROPOSAL REVIEW."
+          },
+          "addOns": [
+            "2026 Annual EcoFi Advantage Membership (+$340.00, pre-added/not optional per proposal)"
+          ],
+          "addOnsNote": "Same as Platinum tier - numerous optional add-ons excluded from this record since not selected in source proposal.",
+          "contractorClaims": {
+            "potentialUtilitySavingsPerYear": 692,
+            "outdoorUnitNoise": "Moderate - 71 dBA",
+            "carbonEmissionReduction": "18% less",
+            "claimSourceNote": "Contractor/manufacturer marketing projections, not measured results."
+          }
+        }
+      ]
+    }
+  ]
+}
