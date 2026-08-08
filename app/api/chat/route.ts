@@ -189,21 +189,27 @@ function formatScopeRanges(rangesByScope: Record<string, ScopeRange>): string {
     .join("\n");
 }
 
-// Exact match to the LOCAL EVIDENCE CONTEXT shape specified for this
-// feature - deliberately plain, factual, no persuasive language. This gets
-// appended to systemPrompt verbatim; SYSTEM_PROMPT's own REAL QUOTE
-// EVIDENCE HIERARCHY section is what teaches Mike how to actually reason
-// about and phrase this to the user - this function only formats the raw
-// facts being handed to it.
+// This gets appended to systemPrompt verbatim. The instruction wrapped
+// around the numbers deliberately does NOT ask Mike to narrate its own
+// sourcing ("based on real proposals I have...") - that's an extra
+// self-referential thing for the model to remember to say, competing with
+// everything else in a long prompt, and it's exactly the kind of soft
+// instruction that wasn't being followed reliably (a real response gave a
+// plain generic-sounding range with none of this framing despite the
+// context being injected correctly - confirmed via logging). Instead the
+// instruction is narrower and more mechanical: use these specific numbers,
+// matched to the correct scope, rather than a generic estimate. The
+// contractor-count caveat stays, since it's substantive (it changes what
+// the user should actually do - get more quotes - not just how Mike
+// phrases where the number came from).
 function formatLocalEvidenceContext(summary: MarketQuoteSummary): string {
   return [
     "LOCAL EVIDENCE CONTEXT:",
     summary.market,
-    `${summary.contractorCount} independent contractor proposal${summary.contractorCount === 1 ? "" : "s"}`,
-    `${summary.configurationCount} configuration option${summary.configurationCount === 1 ? "" : "s"}`,
+    `${summary.contractorCount} independent contractor proposal${summary.contractorCount === 1 ? "" : "s"} (${summary.configurationCount} total configuration option${summary.configurationCount === 1 ? "" : "s"} across them)`,
     formatScopeRanges(summary.rangesByScope),
     "",
-    "Important: Do not treat the configuration count as independent market quotes. Contractor breadth determines confidence more than option count. Use this per the REAL QUOTE EVIDENCE HIERARCHY and LOCAL EVIDENCE framing - this is real local evidence, not a full market benchmark yet.",
+    "If you give a price range for this market, use these numbers - not a generic estimate - matched to the correct scope bucket above (full system vs. AC/coil-only vs. whatever applies to what's actually being asked about; don't cite the full-system range for an AC-only question or vice versa). With only " + summary.contractorCount + " contractor" + (summary.contractorCount === 1 ? "" : "s") + " represented, treat this as directional evidence, not a settled benchmark - it's still real pricing data and should ground your answer, but say the range plainly rather than asserting it as definitive typical pricing for the area.",
   ].join("\n");
 }
 
@@ -211,11 +217,10 @@ function formatNationalEvidenceContext(summary: MarketQuoteSummary): string {
   const marketList = (summary.contributingMarkets || []).join(", ") || "other U.S. markets";
   return [
     "NATIONAL DIRECTIONAL EVIDENCE CONTEXT:",
-    "No validated local quotes exist yet for this user's own market.",
-    `Real contractor proposals from other U.S. markets (${marketList}): ${summary.contractorCount} contractor${summary.contractorCount === 1 ? "" : "s"}, ${summary.configurationCount} configuration option${summary.configurationCount === 1 ? "" : "s"}.`,
+    `No validated local quotes exist yet for this user's own market. Real data available from: ${marketList} (${summary.contractorCount} contractor${summary.contractorCount === 1 ? "" : "s"}, ${summary.configurationCount} configuration option${summary.configurationCount === 1 ? "" : "s"}).`,
     formatScopeRanges(summary.rangesByScope),
     "",
-    "Important: This is NOT a local benchmark and must not be described as typical pricing for the user's area. Use this per the REAL QUOTE EVIDENCE HIERARCHY and NATIONAL DIRECTIONAL EVIDENCE framing - a real-world sanity check from elsewhere in the U.S., offered with appropriately lower confidence than local evidence.",
+    "If you give a price range, use these numbers as a sanity check on your own general knowledge rather than a purely generic estimate - matched to the correct scope bucket above. This is evidence from OTHER markets, not this user's own - make that distinction clear (e.g. 'elsewhere in the U.S.' or similar), and do not describe it as typical pricing for the user's own area.",
   ].join("\n");
 }
 
