@@ -158,7 +158,11 @@ let NATIONAL_SUMMARY: MarketQuoteSummary | null = null;
 // mentioned one, this returns null and retrieval simply doesn't run.
 function detectMentionedMarket(fullUserText: string): MarketQuoteSummary | null {
   const t = fullUserText.toLowerCase();
-  for (const [metroKey, summary] of MARKET_SUMMARIES.entries()) {
+  // Array.from(...) here, not a direct for...of over the Map iterator -
+  // TypeScript's type-checker requires --downlevelIteration or an ES2015+
+  // target to iterate a Map directly, and this avoids depending on the
+  // project's tsconfig target setting (which this file doesn't control).
+  for (const [metroKey, summary] of Array.from(MARKET_SUMMARIES.entries())) {
     // Match on the city name portion (before the comma) - "Columbus, OH"
     // -> "columbus" - a plain substring check, permissive by design (a
     // false positive here just means Mike cites real evidence it happens
