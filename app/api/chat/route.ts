@@ -1891,6 +1891,22 @@ export async function POST(req: NextRequest) {
     if (quoteEvidenceContext) {
       systemPrompt = systemPrompt + "\n\n" + quoteEvidenceContext;
     }
+    // Always log the retrieval decision, even when nothing fires - this is
+    // the only way to verify from Vercel logs whether a given response
+    // that LOOKS like default generic pricing language actually had real
+    // evidence available and the model just didn't cite it clearly, versus
+    // retrieval genuinely finding nothing. Without this, a response with
+    // no local-evidence framing is ambiguous between "no data was found"
+    // and "data was found but not reliably surfaced in the reply."
+    console.log(JSON.stringify({
+      event: "quote_evidence_retrieval",
+      sessionId,
+      timestamp,
+      tier: quoteEvidenceContext
+        ? (quoteEvidenceContext.startsWith("LOCAL") ? "local" : "national")
+        : "none",
+      contextInjected: !!quoteEvidenceContext,
+    }));
 
     if (signals.revisionCode) {
       try {
