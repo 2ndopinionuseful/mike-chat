@@ -1607,6 +1607,82 @@ async function classifyReportOfferTrigger(
   }
 }
 
+// ---- Deterministic backstop for the "open every reply warmly" rule ----
+//
+// SYSTEM_PROMPT's OPEN EVERY REPLY BY MEETING THE PERSON WHERE THEY ARE rule
+// was reworded twice - first as guidance, then as an explicit hard
+// requirement with a mandatory self-check and a real production failure
+// quoted as the negative example - and it STILL lost to the rest of the
+// prompt in live testing (two separate real replies opened directly with
+// price analysis, zero acknowledgment). Rather than keep tuning the
+// wording, this moves the fix to code: the same "code guarantees it, not
+// the model" pattern already used a few lines below for the safety
+// resolution caveat, and the same canned-pool mechanism WARM_OPENERS
+// already uses for the rapport/offer flow. A cheap, fail-safe classifier
+// call checks the model's own draft opening; if it's cold, a fixed,
+// non-model-authored sentence gets prepended. Any classification failure
+// leaves the reply untouched - this can only ever add warmth, never break
+// or block a reply.
+type OpeningToneCheck = { opens_cold: boolean; mode: "warmth" | "calm" | "empathy" | "skip" } | null;
+
+const OPENING_TONE_CLASSIFICATION_PROMPT = `Check whether a draft reply's opening sentence acknowledges the person or their situation, or whether it launches straight into content (a price, a technical distinction, a follow-up question) with no acknowledgment first.
+
+Return ONLY valid JSON, no markdown, no commentary:
+{"opens_cold": boolean, "mode": "warmth" | "calm" | "empathy" | "skip"}
+
+mode (only matters when opens_cold is true):
+- "warmth": casual exploration or general learning, no real stakes
+- "calm": a real expense or decision (a quote, a replacement, a repair call)
+- "empathy": the person seems stressed, urgent, or in a difficult spot
+- "skip": a quick factual question with no emotional weight (e.g. "what does SEER2 mean") - opens_cold should be false here regardless of the literal opening words, since no acknowledgment beat is actually needed
+
+Judge ONLY the first sentence or two of the draft reply. Any acknowledgment at all, even brief, means opens_cold is false.`;
+
+async function classifyOpeningTone(lastUserText: string, draftReply: string): Promise<OpeningToneCheck> {
+  try {
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 100,
+      system: OPENING_TONE_CLASSIFICATION_PROMPT,
+      messages: [{
+        role: "user",
+        content: "User's message: " + lastUserText + "\n\nDraft reply (check its opening only): " + draftReply.slice(0, 400),
+      }],
+    });
+    const block = response.content[0];
+    if (block.type !== "text") return null;
+    const cleaned = block.text.replace(/```json|```/g, "").trim();
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.error("Opening tone classification failed (fail-safe: leaving reply untouched):", e);
+    return null;
+  }
+}
+
+const WARMTH_OPENERS = [
+  "Good question - let's dig into it.",
+  "Happy to walk through that with you.",
+  "Glad you're looking into this before committing to anything.",
+];
+
+const CALM_ACKNOWLEDGMENT_OPENERS = [
+  "That's a real investment, so it's worth getting a grounded number.",
+  "Good that you're pricing this out before talking to contractors.",
+  "That's a decision worth taking slow, so let's ground it in real numbers.",
+];
+
+const EMPATHY_OPENERS = [
+  "Sounds like a stressful spot to be in - let's get you something solid to work with.",
+  "That's a tough situation, so let's get this figured out.",
+  "I hear you - let's get you clear answers here.",
+];
+
+function applyOpeningToneFix(replyText: string, mode: "warmth" | "calm" | "empathy"): string {
+  const pool = mode === "warmth" ? WARMTH_OPENERS : mode === "calm" ? CALM_ACKNOWLEDGMENT_OPENERS : EMPATHY_OPENERS;
+  const opener = pool[Math.floor(Math.random() * pool.length)];
+  return opener + " " + replyText.trim();
+}
+
 function generateSessionId(): string {
   return "sess_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
 }
@@ -2266,6 +2342,20 @@ export async function POST(req: NextRequest) {
     // fail to save - which is worse than an obvious error, since it LOOKS like it worked.
     const hasRevisionCodeLine = /your revision code:/i.test(replyText);
     const reportGenerated = replyText.includes("SITUATION SUMMARY") && hasRevisionCodeLine;
+
+    // Deterministic backstop for the opening-tone rule - see classifyOpeningTone
+    // above for why this moved out of the prompt. Skipped for report turns
+    // (their tone/structure is governed separately by PRE-REPORT VERIFICATION)
+    // and for very short replies, where prepending a sentence would read as
+    // padding rather than a natural acknowledgment.
+    if (!reportGenerated && replyText.trim().length > 40) {
+      const lastUserMsgForTone = [...messages].reverse().find((m) => m.role === "user");
+      const lastUserTextForTone = lastUserMsgForTone ? flattenForExtraction(lastUserMsgForTone.content) : "";
+      const toneCheck = await classifyOpeningTone(lastUserTextForTone, replyText);
+      if (toneCheck?.opens_cold && toneCheck.mode !== "skip") {
+        replyText = applyOpeningToneFix(replyText, toneCheck.mode);
+      }
+    }
 
     if (reportGenerated) {
       // If the user returned with an existing revision code, reuse that same code -
